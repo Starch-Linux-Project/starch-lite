@@ -13,9 +13,9 @@ def run(gs):
     # Autologin is reserved for the disposable live environment.
     if not has_xfce(gs) and not has_cosmic(gs):
         put(root, 'etc/sddm.conf', '[Autologin]\nUser=\nSession=\nRelogin=false\n')
-    put(root, 'etc/os-release', 'NAME="Starch Linux"\nPRETTY_NAME="Starch Linux 1.3"\nID=starch\nID_LIKE=arch\nVERSION="1.3"\nVERSION_ID="1.3"\nVERSION_CODENAME=evergreen\nBUILD_ID=rolling\nANSI_COLOR="38;2;23;147;209"\n')
-    put(root, 'etc/issue', 'Starch Linux \\r (\\l)\n\n')
-    put(root, 'etc/issue.net', 'Starch Linux\n')
+    put(root, 'etc/os-release', 'NAME="Starch Lite"\nPRETTY_NAME="Starch Lite 1.3"\nID=starch\nID_LIKE=arch\nVERSION="1.3"\nVERSION_ID="1.3"\nVERSION_CODENAME=evergreen\nBUILD_ID=rolling\nANSI_COLOR="38;2;23;147;209"\n')
+    put(root, 'etc/issue', 'Starch Lite \\r (\\l)\n\n')
+    put(root, 'etc/issue.net', 'Starch Lite\n')
     if not has_xfce(gs) and not has_cosmic(gs):
         put(root, 'etc/sddm.conf.d/10-starch.conf', '[General]\nDisplayServer=wayland\n\n[Wayland]\n# Plasma Keyboard is KWin\'s input method. KWin keeps its panel dormant until input context calls for it.\nCompositorCommand=kwin_wayland --drm --no-lockscreen --no-global-shortcuts --locale1 --inputmethod plasma-keyboard\n\n[X11]\nSessionDir=/usr/share/starch/no-x11-sessions\n\n[Theme]\nCurrent=breeze\n')
     if is_lite(gs):

@@ -46,7 +46,7 @@ def stage_wallpapers(fs, input_dir=None):
         display_name = re.sub(r'[_-]+', ' ', source.stem).strip().title() or 'Starch Wallpaper'
         metadata = {
             'KPlugin': {
-                'Description': 'Wallpaper supplied with Starch Linux',
+                'Description': 'Wallpaper supplied with Starch Lite',
                 'Id': plugin_id,
                 'Name': display_name,
             },
@@ -97,7 +97,7 @@ def stage_wallpapers(fs, input_dir=None):
 
 def stage_luu(fs, input_dir=None):
     """Install local LUU inputs into the live image and installed-system overlay."""
-    input_dir = Path(input_dir) if input_dir is not None else SOURCE / 'luu-input'
+    input_dir = Path(input_dir) if input_dir is not None else SOURCE.parent / 'luu-input'
     appimages = list(input_dir.glob('*.AppImage'))
     icons = list(input_dir.glob('*.svg'))
     if not appimages and not icons:
@@ -120,22 +120,39 @@ def stage_luu(fs, input_dir=None):
 
 
 def stage_lite(fs, input_dir):
-    config = fs / 'etc/calamares/modules/starchadvanced.conf'
-    config.write_text('liteEnabled: false\n')
     destination = fs / 'usr/share/starch-installer/lite'
-    if destination.exists():
-        shutil.rmtree(destination)
     if input_dir is None:
         return
     sys.path.insert(0, str(SOURCE / 'scripts/installer'))
     from profiles import verified_bundle
     archives = verified_bundle(input_dir)
-    destination = fs / 'usr/share/starch-installer/lite'
-    destination.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.mkdir(parents=True)
     for archive in archives:
         shutil.copyfile(archive, destination / archive.name)
     shutil.copyfile(Path(input_dir) / 'bundle.json', destination / 'bundle.json')
-    config.write_text('liteEnabled: true\n')
+
+
+def stage_live_xfce(fs):
+    """Reuse Lite desktop defaults without installing Artix services."""
+    integration = SOURCE / 'packages/starch-lite/integration/root'
+    defaults = integration / 'usr/share/starch-lite'
+    files = {
+        'usr/lib/starch-lite/xfce-defaults': integration / 'usr/lib/starch-lite/xfce-defaults',
+        'usr/share/starch-lite/xfce-panel.xml': defaults / 'xfce-panel.xml',
+        'usr/share/xfce4/helpers/starch-cosmic-terminal.desktop':
+            integration / 'usr/share/xfce4/helpers/starch-cosmic-terminal.desktop',
+        'etc/xdg/autostart/starch-xfce-defaults.desktop':
+            defaults / 'xfce-config/autostart/starch-xfce-defaults.desktop',
+        'etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml':
+            defaults / 'xfce-panel.xml',
+    }
+    for relative, source in files.items():
+        destination = fs / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+    shutil.copytree(defaults / 'xfce-config/xfce4', fs / 'etc/skel/.config/xfce4', dirs_exist_ok=True)
 
 
 def stage(profile, luu_input=None, wallpaper_input=None, lite_input=None):
@@ -159,12 +176,15 @@ def stage(profile, luu_input=None, wallpaper_input=None, lite_input=None):
         module = fs / 'usr/lib/calamares/modules' / f'starch-{name}'
         module.mkdir(parents=True, exist_ok=True)
         (module / 'module.desc').write_text(f'type: job\nname: starch-{name}\ninterface: python\nscript: main.py\nweight: {20 if name == "bootstrap" else 1}\n')
+        entrypoint = f'{name}.run'
+        if name == 'preflight':
+            entrypoint = 'preflight.run_lite'
         (module / 'main.py').write_text(
             'import sys\nimport libcalamares\n'
             'sys.path.insert(0, "/usr/lib/starch-installer")\n'
             f'import {name}\nfrom runtime import run_stage\n\n'
-            f'def pretty_name():\n    return "Starch: {name}"\n\n'
-            f'def run():\n    return run_stage("{name}", libcalamares.globalstorage, {name}.run)\n')
+            f'def pretty_name():\n    return "Starch Lite: {name}"\n\n'
+            f'def run():\n    return run_stage("{name}", libcalamares.globalstorage, {entrypoint})\n')
     overlay = data / 'target-overlay'
     # Remove the former shared rotation overlay when re-staging an existing tree.
     for name in ('usr/lib/starch/rotation.py',
@@ -174,6 +194,7 @@ def stage(profile, luu_input=None, wallpaper_input=None, lite_input=None):
     shutil.copytree(SOURCE / 'packages/starch-rotation/root', data / 'rotation-overlay', dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     # Explicit allowlist: none of the live user, sudo or network state is copied.
+    # Retain Plasma defaults for legacy targets, outside the live session paths.
     for relative in ('etc/skel/.config/kdeglobals', 'etc/skel/.config/baloofilerc',
                      'etc/skel/.config/kwinrc',
                      'etc/xdg/kscreenlockerrc',
@@ -183,12 +204,18 @@ def stage(profile, luu_input=None, wallpaper_input=None, lite_input=None):
                      'usr/share/starch/splash-starch.bmp',
                      'usr/share/plymouth/themes/starch',
                      'usr/share/plasma/look-and-feel/org.starch.desktop'):
-        source = fs / relative
         desktop_only = relative.startswith(('etc/skel/.config/', 'etc/xdg/kscreenlocker',
                                             'usr/share/sddm/', 'usr/share/plasma/'))
+        source = fs / relative
         dest = (data / 'desktop-overlays/plasma' if desktop_only else overlay) / relative
         dest.parent.mkdir(parents=True, exist_ok=True)
-        if source.is_dir():
+        if desktop_only:
+            if source.is_dir():
+                shutil.copytree(source, dest, dirs_exist_ok=True)
+                shutil.rmtree(source)
+            elif source.is_file():
+                source.replace(dest)
+        elif source.is_dir():
             shutil.copytree(source, dest, dirs_exist_ok=True)
         else:
             shutil.copyfile(source, dest)
@@ -207,6 +234,7 @@ def stage(profile, luu_input=None, wallpaper_input=None, lite_input=None):
     fish = overlay / 'etc/fish/conf.d/10-starch.fish'
     fish.parent.mkdir(parents=True, exist_ok=True)
     fish.write_text('if status is-interactive; and test (id -u) -ne 0\n    fastfetch\nend\n')
+    stage_live_xfce(fs)
     stage_luu(fs, luu_input)
     stage_wallpapers(fs, wallpaper_input)
 

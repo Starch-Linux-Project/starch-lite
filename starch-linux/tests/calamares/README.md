@@ -1,3 +1,6 @@
+> Historical test for the profile chooser from the multi-profile installer.
+> The dedicated Starch Lite package omits that plugin.
+
 # Native Installation Profiles test
 
 `advanced-selection.cpp` loads the built `starchadvanced` plugin and operates

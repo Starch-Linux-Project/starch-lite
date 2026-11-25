@@ -34,6 +34,9 @@ class Storage:
     def __init__(self, **values):
         self.values = values
 
+    def insert(self, name, value):
+        self.values[name] = value
+
     def value(self, name):
         return self.values.get(name)
 
@@ -45,7 +48,7 @@ def bundle(root):
         filename = f'{name}-1.0-1-x86_64.pkg.tar.zst'
         stream = io.BytesIO()
         with tarfile.open(fileobj=stream, mode='w') as archive:
-            data = f'pkgname = {name}\npkgver = 0.2.2-17\n'.encode()
+            data = f'pkgname = {name}\npkgver = 0.2.2-18\n'.encode()
             member = tarfile.TarInfo('.PKGINFO')
             member.size = len(data)
             archive.addfile(member, io.BytesIO(data))
@@ -258,17 +261,16 @@ class LiteProfile(unittest.TestCase):
         self.assertNotIn('STARCH_EXPERIMENTAL_LITE', build)
         self.assertIn("SOURCE / 'build/starch-lite/artix-repo'", stage_script)
         self.assertNotIn('STARCH_EXPERIMENTAL_LITE', stage_script)
-        self.assertIn('liteEnabled: true',
-                      (ROOT / 'calamares/modules/starchadvanced.conf').read_text())
 
-    def test_profiles_page_exposes_three_profiles_without_advanced_gate(self):
-        page = (ROOT / 'packages/calamares/0005-starch-advanced-page.patch').read_text()
-        for title in ('Installation Profiles', 'KDE Plasma LTS — Recommended',
-                      'COSMIC LTS', 'Starch Lite — For experienced users'):
-            self.assertIn(title, page)
-        for obsolete in ('QCheckBox', 'advancedGate', 'starchAdvancedAcknowledged'):
-            self.assertNotIn(obsolete, page)
-        self.assertIn('m_plasma->setChecked( true );', page)
+    def test_dedicated_installer_forces_lite_before_preflight(self):
+        gs = Storage(starchLite=False, starchDesktop='cosmic')
+        with patch.object(preflight, 'run', side_effect=profiles.validate_selection) as run:
+            preflight.run_lite(gs)
+        run.assert_called_once_with(gs)
+        profiles.validate_selection(gs)
+        self.assertEqual(profiles.profile_name(gs), 'lite-xfce')
+        self.assertTrue(gs.value('starchLiteXfce'))
+        self.assertNotIn('starchadvanced', (ROOT / 'calamares/settings.conf').read_text())
 
     def test_repository_and_signing_selection_is_lite_only(self):
         original_is_file = Path.is_file
@@ -468,8 +470,8 @@ class LiteProfile(unittest.TestCase):
     def test_limine_efi_selects_profile_kernel(self):
         self.assertIn('starch-linux-lts.efi', limine.configuration('abc'))
         lite_config = limine.configuration('abc', 'linux-zen')
-        self.assertIn('/Starch Linux\n', lite_config)
-        self.assertNotIn('/Starch Lite', lite_config)
+        self.assertIn('/Starch Lite\n', lite_config)
+        self.assertNotIn('/Starch Lite LTS', lite_config)
         self.assertIn('starch-linux-zen.efi', lite_config)
         self.assertNotIn('linux-lts', lite_config)
 
@@ -479,18 +481,17 @@ class LiteProfile(unittest.TestCase):
             fs = root / 'airootfs'
             (fs / 'etc/calamares/modules').mkdir(parents=True)
             stage.stage_lite(fs, None)
-            self.assertIn('false', (fs / 'etc/calamares/modules/starchadvanced.conf').read_text())
+            self.assertFalse((fs / 'usr/share/starch-installer/lite').exists())
             bundle(root / 'repo')
             stage.stage_lite(fs, root / 'repo')
-            self.assertIn('true', (fs / 'etc/calamares/modules/starchadvanced.conf').read_text())
             self.assertEqual(len(profiles.verified_bundle(fs / 'usr/share/starch-installer/lite')), 2)
             self.assertFalse((fs / 'usr/bin/openrc-init').exists())
             stale = fs / 'usr/share/starch-installer/lite/starch-lite-old.pkg.tar.zst'
             stale.touch()
             stage.stage_lite(fs, root / 'repo')
             self.assertFalse(stale.exists())
-            stage.stage_lite(fs, None)
-            self.assertFalse((fs / 'usr/share/starch-installer/lite').exists())
+            with self.assertRaises(RuntimeError):
+                stage.stage_lite(fs, root / 'missing-repo')
 
 
 if __name__ == '__main__':

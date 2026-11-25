@@ -21,7 +21,7 @@ LOG = Path('/var/log/starch-installer.log')
 
 def require_live():
     if os.geteuid() != 0 or not Path('/etc/starch-live').is_file():
-        raise RuntimeError('The installer must run as root inside the Starch live ISO.')
+        raise RuntimeError('The installer must run as root inside the Starch Lite live ISO.')
 
 
 def command(argv, timeout=3600):
@@ -284,5 +284,5 @@ def run_stage(name, gs, function):
     except Exception as error:
         with LOG.open('a') as log:
             log.write(f'FAILED: {error}\n')
-        return (f'Starch: {name} failed', html.escape(str(error)) + '<br/>Installation did not complete. Log: /var/log/starch-installer.log')
+        return (f'Starch Lite: {name} failed', html.escape(str(error)) + '<br/>Installation did not complete. Log: /var/log/starch-installer.log')
     return None

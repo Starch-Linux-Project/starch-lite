@@ -1,6 +1,6 @@
-# Agent guide for Starch Linux
+# Agent guide for Starch Lite
 
-This file is the working guide for coding agents in the Starch Linux source
+This file is the working guide for coding agents in the Starch Lite source
 repository. Read it before changing code, packaging, installer behavior, build
 tooling, desktop defaults, or documentation. Paths and commands below are
 relative to this repository's root unless explicitly stated otherwise.
@@ -11,9 +11,8 @@ are repository baselines, not claims about the latest upstream releases.
 
 ## 1. Scope, instructions, and working assumptions
 
-- This checkout is `starch-linux`. Its parent may contain a separate
-  `dev-private-starch` checkout with development notes. They are separate Git
-  repositories, not source subdirectories or submodules of one project.
+- This checkout builds Starch Lite. The source remains in the historical
+  `starch-linux/` directory within the Git repository.
 - Apply this guide throughout this repository. Read any more specific
   `AGENTS.md` in a directory before editing files there.
 - Follow applicable higher-priority instructions and the user's current task.
@@ -51,23 +50,18 @@ Use `docs/decisions.md` and `docs/installation-profiles.md` for the documented
 product boundary. When they disagree, identify the discrepancy and make the
 smallest task-relevant correction; do not silently broaden supported behavior.
 
-Historical plans and validation reports are context, not present-day proof.
-Some older documentation describes an Advanced acknowledgement gate or earlier
-Lite desktop combinations. The current UI exposes three installation profiles,
-and `validate_selection()` enforces the supported combinations. Compatibility
-helpers and legacy session files do not establish support for more profiles.
+Historical plans and validation reports describe earlier multi-profile images.
+The dedicated installer always uses `lite-xfce`.
 
 ## 2. Product and platform contract
 
-Starch Linux is an x86_64 Linux distribution built with Archiso. One live ISO
-provides a graphical, online, erase-disk installer using Calamares.
+Starch Lite is an x86_64 Linux distribution with an Archiso live image and a
+graphical, online, erase-disk installer using Calamares.
 
-| Environment | Profile identity | Desktop and login | Kernel | Init | Repositories |
-| --- | --- | --- | --- | --- | --- |
-| Live ISO | Not a target profile | Plasma Wayland / SDDM | `linux` | systemd | Arch plus the staged local installer package |
-| KDE Plasma LTS, default | `standard` | Plasma Wayland / SDDM | `linux-lts` | systemd | Arch |
-| COSMIC LTS | `standard-cosmic` | COSMIC Wayland / COSMIC Greeter through greetd | `linux-lts` | systemd | Arch |
-| Starch Lite | `lite-xfce` | Xfce X11 / LightDM | `linux-zen` | OpenRC | Artix `system`, `world`, `galaxy`, then Arch `extra` |
+| Environment | Desktop and login | Kernel | Init | Repositories |
+| --- | --- | --- | --- | --- |
+| Live ISO | Xfce X11 / LightDM | `linux` | systemd | Arch plus the staged local installer package |
+| Installed | Xfce X11 / LightDM | `linux-zen` | OpenRC | Artix `system`, `world`, `galaxy`, then Arch `extra` |
 
 Shared installed-system behavior includes ext4, Limine, zram, NetworkManager,
 PipeWire, Flatpak/Flathub, and Linux Update Utility. Fish is the standard user's
@@ -84,7 +78,6 @@ Preserve these boundaries unless the task explicitly changes them:
   supported workflow.
 - Full-disk encryption, offline installation, hibernation, snapshot rollback,
   ARM images, and 32-bit images are outside the documented scope.
-- The live environment remains Plasma/systemd even when installing Lite.
 - Starch does not stage upstream Arch updates or promise automatic rollback.
 - Starch-owned bundled utilities and configuration have no dedicated update
   channel for existing installations. Rebuilding an ISO changes future installs.
@@ -155,10 +148,8 @@ reviewable as a source change.
 
 ## 4. Installer architecture and execution order
 
-`calamares/settings.conf` is the authority for execution order. The current
-visible pages are welcome, locale, keyboard, partition, users,
-`starchadvanced`, `starchsoftware` (Additional Software), and summary. The module name `starchadvanced` persists even
-though the public page is Installation Profiles.
+`calamares/settings.conf` is the authority for execution order. The visible pages are welcome, locale, keyboard, partition, users,
+`starchsoftware` (Additional Software), and summary.
 
 The execution sequence is:
 
@@ -172,12 +163,11 @@ The execution sequence is:
 8. `keyboard`
 9. `localecfg`
 10. `users`
-11. `displaymanager`
-12. `starch-configure`
-13. `starch-limine`
-14. `starch-validate`
-15. `starchsoftware` (optional software; warning-only failures)
-16. `umount`
+11. `starch-configure`
+12. `starch-limine`
+13. `starch-validate`
+14. `starchsoftware` (optional software; warning-only failures)
+15. `umount`
 
 The Additional Software page preserves raw entries in `starchSoftware_pacman`
 and `starchSoftware_flathub`; its native job deduplicates requests and shows
@@ -279,23 +269,13 @@ HTML. Failure must not be presented as installation success.
 
 ## 6. Profiles, packages, repositories, and signing
 
-### Profile selection is a cross-layer contract
+### Dedicated profile initialization
 
-Profile changes can affect the native Qt page, Calamares global storage,
-`profiles.py`, preflight, bootstrap, configuration, validation, fixtures, and
-documentation. Review the whole path rather than changing only a label.
-
-- KDE Plasma LTS is the default.
-- Selection is mutually exclusive, survives navigation, and appears in Summary.
-- Lite is included in normal builds and disabled when its required bundle is
-  unavailable. Stale stored selection must still be rejected by Python stages.
-- `starchLite`, `starchDesktop`, and the compatibility key `starchLiteXfce` must
-  resolve consistently. Keep `validate_selection()` ahead of disk operations.
-- Reject unsupported combinations even if helper functions can name them.
-  Legacy Plasma/OpenRC or COSMIC/OpenRC code is not an invitation to expose a
-  fourth profile without an explicitly scoped feature change.
-- Remove unwanted desktop packages before dependency resolution; hiding their
-  login sessions after installation is insufficient isolation.
+The staged preflight entry point sets `starchLite`, `starchDesktop`, and
+`starchLiteXfce` to the fixed Xfce/OpenRC combination before calling
+`validate_selection()` and preparing the disk. The ISO build requires the
+verified Lite bundle. Bootstrap and later jobs recheck the saved identity.
+Legacy package and desktop helpers remain covered by compatibility tests.
 
 ### Package sources and transaction checks
 
@@ -326,7 +306,7 @@ selection vendor-based and conservative for unknown input.
   `artix-arch-extra` and the expected `starch-lite` and `artix-keyring` entries.
 - Verify allowed package names, basenames, regular-file status, non-symlink
   inputs, and SHA-256 checksums before using a bundle. Inspect the actual Lite
-  archive identity (`0.2.2-17`) and reject retired audio/PAM payloads. Update the
+  archive identity (`0.2.2-18`) and reject retired audio/PAM payloads. Update the
   reviewed package version in `profiles.verify_lite_archive()` on package releases.
 - Preserve the pinned Artix keyring acquisition record and checksum.
 - Lite trust initialization is isolated; it must not populate or weaken the
@@ -367,17 +347,16 @@ Use `configure.py` for installed OS identity and
 `archiso/profile/airootfs/etc/os-release` for live identity. Review both when
 changing distribution naming or release information.
 
-### Plasma and installer launch
+### Live Xfce and installer launch
 
 The live installer launcher is
 `archiso/profile/airootfs/usr/local/bin/starch-install`. It launches elevated
-Calamares through XWayland using Qt's `xcb` backend, preserving the necessary
-display authentication environment. The live image includes `xorg-xwayland`.
+Calamares on X11 using Qt's `xcb` backend, preserving `DISPLAY` and
+`XAUTHORITY`. LightDM automatically starts Xfce for the disposable live account.
 
 The launcher offers standard keyboard mode by default and an optional
 on-screen-keyboard mode for installer fields. Keep that choice scoped to the
-installer. Plasma's own keyboard, login screen, and lock screen use their
-desktop integration; do not globally force a keyboard panel open for all users.
+installer.
 Installed-system autologin must remain disabled and validated.
 
 ### COSMIC
@@ -479,7 +458,7 @@ The package sub-builds have additional tool checks, including chroot/bootstrap
 and namespace tooling. A successful top-level check is not a successful package
 build, ISO build, boot test, or installation test.
 
-For a complete ISO build, `luu-input/` must contain exactly one `*.AppImage` and
+For a complete ISO build, the Git-root `luu-input/` must contain exactly one `*.AppImage` and
 one `*.svg`, both regular non-symlink files. `wallpapers/` must be a real
 directory. Do not download an arbitrary substitute or fabricate a binary to
 make these checks pass.
@@ -498,14 +477,14 @@ build roots instead of installing build dependencies into the host ad hoc.
 
 This prepares/reuses verified Calamares and Lite package outputs, creates a fresh
 run directory, stages a copied profile, invokes Archiso, validates the built
-filesystem, and emits the ISO with reports under `starch-out/run-*`.
+filesystem, and emits the ISO with reports under `starch-out/run-*` at the Git root.
 
 ```sh
 ./build.sh --compile
 ```
 
 This also performs the ISO build. It keeps accompanying artifacts under that
-run's `build/work/run-*/artifacts/` and places the ISO directly in `starch-out/`
+run's `build/work/run-*/artifacts/` and places the ISO directly in the Git-root `starch-out/`
 with the run ID in its name. It is not a syntax-only or package-only check.
 The final move uses a hard link; source and destination must support it.
 
@@ -563,7 +542,7 @@ dependency for the package's Python toolchain. Preserve the isolated official
 Arch build configuration and the pinned upstream archive checksum.
 
 Starch patches cover erase-only partitioning, OS-prober avoidance, live-only
-autologin policy, installer presentation, profile selection, and optional software. When changing
+autologin policy, installer presentation, and optional software. When changing
 a patch:
 
 1. Inspect its current upstream context and the corresponding tests.
@@ -652,11 +631,9 @@ but it does modify generated chroot state. The timeout status indicates that
 the GUI remained open; inspect `build/calamares/smoke.log` for module errors.
 A successful launch does not prove a successful installation.
 
-For native profile UI changes, follow `tests/calamares/README.md`. Its C++ test
-loads the actual plugin and checks defaults, every profile transition, repeated
-clicks, page reuse, missing-bundle fallback, global storage, and exclusion.
-Compile it with the matching source headers/libraries in the prepared chroot.
-Do not substitute a Python-only state test for checking the actual Qt controls.
+The historical native profile test in `tests/calamares/` requires a package
+from the multi-profile installer. Use the preflight identity tests and the
+live filesystem validator for the dedicated installer.
 
 ### Built live filesystem and rotation integration
 
@@ -683,8 +660,7 @@ modes on disposable VM disks. Exercise the relevant cases rather than claiming
 coverage from a single successful default installation:
 
 - BIOS and UEFI live boot, installer launch, installation, and installed reboot.
-- Default selection, every supported profile, back navigation, Summary, and
-  missing-Lite-bundle behavior where the build/test fixture supports it.
+- Direct installation into Starch Lite, back navigation, and Summary.
 - Disk selection with multiple disks; verify an unselected disk is untouched.
 - Network loss, failed downloads, signature failures, and safe failure messages.
 - Correct kernel/init/display manager and absence of incompatible desktop state.
@@ -786,7 +762,7 @@ command, source changes, relevant log, and artifact paths before cleanup.
 | Rootless namespace fails | Subordinate mappings and environment restrictions; do not bypass installer safety or alter the host silently. |
 | Calamares build fails | Pinned-source/patch checksums, patch context, pybind11/toolchain compatibility, and isolated package logs. |
 | Installer page/module fails to load | Staged settings, built module set, matching schema, plugin linkage, and smoke log. |
-| Lite is missing/disabled | Verified bundle availability, staging configuration, manifest identity, and checksums. |
+| Lite bundle verification fails | Bundle availability, staging configuration, manifest identity, and checksums. |
 | COSMIC preflight rejects packages | Actual resolved transaction, forbidden/missing packages, and audited component versions. |
 | Pacstrap fails | Network/mirror/signature error and selected repository/keyring; retain bounded retry behavior. |
 | Installed system will not boot | Firmware mode, actual mounted boot filesystem, selected kernel artifacts, Limine config, and enrolled identities. |

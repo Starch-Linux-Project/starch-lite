@@ -1,8 +1,8 @@
-# Maintainer: Starch Linux project
+# Maintainer: Starch Lite project
 pkgname=starch-lite
 pkgver=0.2.2
-pkgrel=17
-pkgdesc='Optional Zen/OpenRC configuration for Starch Linux'
+pkgrel=18
+pkgdesc='Xfce and OpenRC integration for Starch Lite'
 arch=(x86_64)
 url='https://github.com/SethDoesTech/starch-linux'
 license=(GPL-3.0-or-later)

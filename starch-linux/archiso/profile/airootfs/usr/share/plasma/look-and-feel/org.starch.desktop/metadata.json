@@ -3,11 +3,11 @@
     "KPlugin": {
         "Authors": [
             {
-                "Name": "Starch Linux"
+                "Name": "Starch Lite"
             }
         ],
         "Category": "",
-        "Description": "Starch Linux Breeze Dark defaults",
+        "Description": "Starch Lite Breeze Dark defaults",
         "Id": "org.starch.desktop",
         "License": "GPL-2.0-or-later",
         "Name": "Starch Dark"

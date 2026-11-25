@@ -89,7 +89,7 @@ class XfcePanel(unittest.TestCase):
             shutil.copytree(ROOT / 'archiso/profile', profile, symlinks=True)
             stage.stage(profile)
             fs = profile / 'airootfs'
-            self.assertFalse((fs / 'etc/skel' / USER_PANEL).exists())
+            self.assertEqual((fs / 'etc/skel' / USER_PANEL).read_bytes(), PANEL.read_bytes())
             data = fs / 'usr/share/starch-installer'
             binary = data / 'target-overlay/usr/local/bin/linux-update-utility.AppImage'
             binary.parent.mkdir(parents=True, exist_ok=True)

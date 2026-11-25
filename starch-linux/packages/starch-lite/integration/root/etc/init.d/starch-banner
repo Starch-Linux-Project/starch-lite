@@ -1,6 +1,6 @@
 #!/usr/bin/openrc-run
 # SPDX-License-Identifier: GPL-3.0-or-later
-description="Display the Starch Linux startup banner"
+description="Display the Starch Lite startup banner"
 
 depend() {
     before '*'
@@ -8,5 +8,5 @@ depend() {
 }
 
 start() {
-    printf '\nStarting Starch Linux\n\n'
+    printf '\nStarting Starch Lite\n\n'
 }

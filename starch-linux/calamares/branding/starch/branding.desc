@@ -7,13 +7,13 @@ slideshow: []
 sidebar: widget
 navigation: widget
 strings:
-  productName: Starch Linux
-  shortProductName: Starch
+  productName: Starch Lite
+  shortProductName: Starch Lite
   version: "1.3"
   shortVersion: "1.3"
-  versionedName: Starch Linux 1.3
-  shortVersionedName: Starch Linux 1.3
-  bootloaderEntryName: Starch
+  versionedName: Starch Lite 1.3
+  shortVersionedName: Starch Lite 1.3
+  bootloaderEntryName: Starch Lite
   productUrl: ""
   supportUrl: ""
   knownIssuesUrl: ""

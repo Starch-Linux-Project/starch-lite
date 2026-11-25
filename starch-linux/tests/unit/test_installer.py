@@ -45,7 +45,7 @@ class InstallerSafety(unittest.TestCase):
             content = (ROOT / 'calamares/branding/starch' / name).read_text()
             self.assertNotIn('@PRODUCT_URL@', content)
             self.assertNotIn('href=', content)
-            self.assertIn('Starch Linux', content)
+            self.assertIn('Starch Lite', content)
             self.assertNotIn('1.1', content)
 
         partition = yaml.safe_load((ROOT / 'calamares/modules/partition.conf').read_text())
@@ -75,7 +75,7 @@ class InstallerSafety(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 validate.validate_machine_id(root)
 
-    def test_installed_sddm_uses_live_wayland_compositor(self):
+    def test_legacy_installed_sddm_uses_wayland_compositor(self):
         class GS:
             def value(self, name):
                 return {'firmwareType': 'bios'}.get(name)
@@ -88,10 +88,7 @@ class InstallerSafety(unittest.TestCase):
                 configure.run(GS())
             installed = configparser.ConfigParser()
             installed.read(root / 'etc/sddm.conf.d/10-starch.conf')
-            live = configparser.ConfigParser()
-            live.read(ROOT / 'archiso/profile/airootfs/etc/sddm.conf.d/10-starch-live.conf')
             self.assertEqual(installed['General']['DisplayServer'], 'wayland')
-            self.assertEqual(installed['Wayland']['CompositorCommand'], live['Wayland']['CompositorCommand'])
             self.assertEqual(installed['Wayland']['CompositorCommand'].split()[0], 'kwin_wayland')
             self.assertIn('--inputmethod plasma-keyboard', installed['Wayland']['CompositorCommand'])
             self.assertEqual(installed['Theme']['Current'], 'breeze')
@@ -350,7 +347,7 @@ class InstallerSafety(unittest.TestCase):
             self.assertTrue((root / 'etc/pacman.d/hooks/99-starch-limine.hook').is_file())
             chroot.assert_any_call(
                 root, 'efibootmgr', '--create', '--disk', '/dev/vda', '--part', '1',
-                '--label', 'Starch Linux', '--loader', r'\EFI\Limine\BOOTX64.EFI')
+                '--label', 'Starch Lite', '--loader', r'\EFI\Limine\BOOTX64.EFI')
 
     def test_maintenance_hooks_for_both_firmware_modes(self):
         for mode in ('efi', 'bios'):
@@ -380,6 +377,18 @@ class InstallerSafety(unittest.TestCase):
             profile = Path(d) / 'profile'
             shutil.copytree(ROOT / 'archiso/profile', profile, symlinks=True)
             stage.stage(profile)
+            fs = profile / 'airootfs'
+            self.assertFalse((fs / 'usr/share/plasma/look-and-feel/org.starch.desktop').exists())
+            self.assertFalse((fs / 'etc/skel/.config/kwinrc').exists())
+            self.assertTrue((fs / 'etc/xdg/autostart/starch-xfce-defaults.desktop').is_file())
+            self.assertTrue((fs / 'usr/share/xfce4/helpers/starch-cosmic-terminal.desktop').is_file())
+            entrypoint = fs / 'usr/lib/calamares/modules/starch-preflight/main.py'
+            self.assertIn('libcalamares.globalstorage, preflight.run_lite)', entrypoint.read_text())
+            self.assertFalse((fs / 'etc/xdg/xfce4/helpers.rc').exists())
+            self.assertIn('TerminalEmulator=starch-cosmic-terminal',
+                          (fs / 'etc/skel/.config/xfce4/helpers.rc').read_text())
+            panel = fs / 'etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml'
+            self.assertIn('thunar.desktop', panel.read_text())
             overlay = profile / 'airootfs/usr/share/starch-installer/target-overlay'
             for path in ('etc/passwd', 'etc/shadow', 'etc/sudoers.d/10-starch-live', 'etc/starch-live',
                          'etc/systemd/system', 'etc/NetworkManager', 'home/liveuser',

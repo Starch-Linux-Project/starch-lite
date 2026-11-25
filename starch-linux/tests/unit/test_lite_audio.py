@@ -156,7 +156,9 @@ class UpstreamAudio(unittest.TestCase):
                      'usr/lib/starch-lite/xfce-defaults',
                      'usr/share/xfce4/helpers/starch-cosmic-terminal.desktop'):
             self.assertTrue((PAYLOAD / name).is_file(), name)
-            original = subprocess.check_output(['git', 'show', 'HEAD:packages/starch-lite/integration/root/' + name], cwd=ROOT)
+            original = subprocess.check_output(['git', 'show', 'HEAD:./packages/starch-lite/integration/root/' + name], cwd=ROOT)
+            if name == 'etc/init.d/starch-banner':
+                original = original.replace(b'Starch Linux', b'Starch Lite')
             self.assertEqual((PAYLOAD / name).read_bytes(), original)
         for p in PAYLOAD.rglob('*'):
             if p.is_file():
@@ -164,9 +166,9 @@ class UpstreamAudio(unittest.TestCase):
                 self.assertNotEqual(p.name, 'starch-audio.desktop')
 
     def test_archive_rejects_old_version_and_removed_payload_even_with_new_identity(self):
-        for version, stale in [('0.2.2-16', None), ('0.2.2-17', 'usr/lib/starch-lite/audio-session'),
-                               ('0.2.2-17', 'usr/share/starch-lite/xfce-config/autostart/starch-audio.desktop'),
-                               ('0.2.2-17', None)]:
+        for version, stale in [('0.2.2-17', None), ('0.2.2-18', 'usr/lib/starch-lite/audio-session'),
+                               ('0.2.2-18', 'usr/share/starch-lite/xfce-config/autostart/starch-audio.desktop'),
+                               ('0.2.2-18', None)]:
             with self.subTest(version=version, stale=stale), tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / 'starch-lite.pkg.tar'
                 with tarfile.open(path, 'w') as archive:
@@ -176,7 +178,7 @@ class UpstreamAudio(unittest.TestCase):
                     archive.addfile(info, io.BytesIO(data))
                     if stale:
                         archive.addfile(tarfile.TarInfo(stale))
-                if version.endswith('-16') or stale:
+                if version != '0.2.2-18' or stale:
                     with self.assertRaises(RuntimeError):
                         profiles.verify_lite_archive(path)
                 else:

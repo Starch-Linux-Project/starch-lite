@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 
-iso_name="starch-linux"
-iso_label="STARCH_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
-iso_publisher="Starch Linux"
-iso_application="Starch Linux Installer"
+iso_name="starch-lite"
+iso_label="STARCHLITE_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
+iso_publisher="Starch Lite"
+iso_application="Starch Lite Installer"
 iso_version="$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y.%m.%d)"
 install_dir="arch"
 buildmodes=('iso')
@@ -22,6 +22,7 @@ file_permissions=(
   ["/usr/share/applications/linux-update-utility.desktop"]="0:0:644"
   ["/etc/sudoers.d/10-starch-live"]="0:0:440"
   ["/usr/local/lib/starch/setup-live-user"]="0:0:755"
+  ["/usr/lib/starch-lite/xfce-defaults"]="0:0:755"
   ["/etc/shadow"]="0:0:400"
   ["/root"]="0:0:750"
   ["/root/.automated_script.sh"]="0:0:755"

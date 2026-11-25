@@ -16,11 +16,11 @@ def root_uuid(fstab):
 
 
 def configuration(_uuid, kernel='linux-lts'):
-    label = 'Starch Linux' if kernel == 'linux-zen' else 'Starch Linux LTS'
+    label = 'Starch Lite' if kernel == 'linux-zen' else 'Starch Lite LTS'
     return (
         'timeout: 5\n'
         'default_entry: 1\n'
-        'interface_branding: Starch Linux\n'
+        'interface_branding: Starch Lite\n'
         '\n'
         f'/{label}\n'
         '    protocol: efi\n'
@@ -74,7 +74,7 @@ def run(gs):
         if not part_number.isdigit():
             raise RuntimeError('Could not identify the EFI system partition number.')
         chroot(root, 'efibootmgr', '--create', '--disk', disk, '--part', part_number,
-               '--label', 'Starch Linux', '--loader', r'\EFI\Limine\BOOTX64.EFI')
+               '--label', 'Starch Lite', '--loader', r'\EFI\Limine\BOOTX64.EFI')
         return
 
     tree = json.loads(output(['lsblk', '--json', '--tree', '-o', 'PATH,PARTN,PARTTYPE', '--', disk]))
@@ -86,10 +86,10 @@ def run(gs):
     loader = root / 'boot/limine'
     loader.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(root / 'usr/share/limine/limine-bios.sys', loader / 'limine-bios.sys')
-    label = 'Starch Linux' if is_lite(gs) else 'Starch Linux LTS'
+    label = 'Starch Lite' if is_lite(gs) else 'Starch Lite LTS'
     options = 'init=/usr/bin/openrc-init' if is_lite(gs) else 'quiet splash'
     (loader / 'limine.conf').write_text(
-        'timeout: 5\ndefault_entry: 1\ninterface_branding: Starch Linux\n\n'
+        'timeout: 5\ndefault_entry: 1\ninterface_branding: Starch Lite\n\n'
         f'/{label}\n    protocol: linux\n'
         f'    path: boot():/vmlinuz-{kernel}\n'
         f'    module_path: boot():/initramfs-{kernel}.img\n'

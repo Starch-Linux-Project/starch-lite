@@ -2,11 +2,12 @@
 set -euo pipefail
 # Called inside mkarchiso's root by the live-only package hook.
 [[ -f /etc/starch-live ]]
-[[ -x /usr/bin/fish && -f /usr/share/wayland-sessions/plasma.desktop ]]
+[[ -x /usr/bin/fish && -f /usr/share/xsessions/xfce.desktop ]]
 if ! id liveuser &>/dev/null; then
-    useradd --create-home --user-group --groups wheel --shell /usr/bin/fish --comment 'Starch Live' liveuser
+    useradd --create-home --user-group --groups wheel --shell /usr/bin/fish --comment 'Starch Lite Live' liveuser
 fi
-usermod --shell /usr/bin/fish liveuser
+getent group autologin >/dev/null || groupadd --system autologin
+usermod --append --groups autologin --shell /usr/bin/fish liveuser
 printf '%s\n' 'liveuser:password' | chpasswd
 usermod --shell /usr/bin/bash root
 live_home=$(getent passwd liveuser | cut -d: -f6)

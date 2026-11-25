@@ -2,7 +2,7 @@
 [Trigger]
 Operation = Install
 Type = Package
-Target = sddm
+Target = lightdm
 
 [Action]
 Description = Configure the Starch live account

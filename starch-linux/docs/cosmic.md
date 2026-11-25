@@ -1,6 +1,6 @@
 # COSMIC LTS
 
-Select **COSMIC LTS** on the Installation Profiles page. It uses Arch packages,
+The former multi-profile installer offered **COSMIC LTS**. It uses Arch packages,
 Linux LTS, systemd, and COSMIC Wayland with COSMIC Greeter (greetd).
 
 The profile includes COSMIC Files, Terminal, Text Editor, desktop portals,

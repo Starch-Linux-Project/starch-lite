@@ -1,6 +1,6 @@
-# Starch Linux Project
+# Starch Lite Project
 
-Starch Linux, a personal Linux made to  serve you the endless horizons of Arch/Artix,
+Starch Lite, a personal Linux made to  serve you the endless horizons of Arch/Artix,
 without roleplaying as a systems engineer. 
 
 If you'd like to contribute to this project, understand your contribution matters
@@ -19,29 +19,35 @@ a fix to anything you think could be improved. 5 niche experts > one dude.
 
 
 
-# Starch Linux
+# Starch Lite
 
-Starch Linux is an x86_64 Linux distribution with a graphical online installer.
-One ISO offers three installation profiles:
+Starch Lite is an x86_64 Linux distribution with a dedicated live ISO and a
+graphical online installer. The live session uses Xfce on X11 with LightDM,
+systemd, and the Arch `linux` kernel. Calamares installs Starch Lite directly
+with Xfce, LightDM, Linux Zen, OpenRC, and Artix repositories plus Arch `extra`.
 
-| Profile | Desktop / login | Kernel / init | Repositories |
-| --- | --- | --- | --- |
-| KDE Plasma LTS (default) | Plasma Wayland / SDDM | Linux LTS / systemd | Arch |
-| COSMIC LTS | COSMIC Wayland / COSMIC Greeter | Linux LTS / systemd | Arch |
-| Starch Lite | Xfce X11 / LightDM | Linux Zen / OpenRC | Artix + Arch extra |
-
-Calamares installs fresh packages with pacstrap and erases the selected disk.
-All profiles use ext4, Limine (UEFI or BIOS), zram, NetworkManager, PipeWire,
-Flatpak, and Linux Update Utility. The Archiso live desktop uses Plasma,
-systemd, and the regular Arch kernel.
+Calamares downloads fresh packages with pacstrap and erases the selected disk.
+The installed system uses ext4, Limine (UEFI or BIOS), zram, NetworkManager,
+PipeWire, Flatpak, and Linux Update Utility.
 
 An optional Additional Software page accepts pacman packages and Flathub app IDs
 for installation after the essential OS succeeds, with safe skipping and warnings
 for optional failures. Nothing is deferred to first boot.
 
-See [installation profiles](docs/installation-profiles.md),
-[supported scope](docs/decisions.md), and [licensing](docs/licensing.md).
+See [installation](starch-linux/docs/installation-profiles.md),
+[supported scope](starch-linux/docs/decisions.md), and [licensing](starch-linux/docs/licensing.md).
 
 Source: `archiso/profile/` holds the live image; `calamares/` the installer;
 `manifests/` the base package list; `scripts/installer/` profile configuration;
 `packages/` integrations; and `tests/` automated checks.
+
+## Build the ISO
+
+Place the Linux Update Utility AppImage and SVG icon in `luu-input/` at the
+repository root. From that root, run:
+
+```bash
+./starch-linux/build.sh --check && ./starch-linux/build.sh --build
+```
+
+The ISO and build reports are written to `starch-out/run-*/` at the repository root.

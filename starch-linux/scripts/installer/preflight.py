@@ -9,6 +9,14 @@ from repositories import prepare_lite_keyring
 from runtime import DATA, STATE, check_disk_tree, command, deactivate_disk, microcode, output, read_manifest, selected_disk
 
 
+def run_lite(gs):
+    """Initialize the only profile shipped by the dedicated installer."""
+    gs.insert('starchLite', True)
+    gs.insert('starchDesktop', 'xfce')
+    gs.insert('starchLiteXfce', True)
+    run(gs)
+
+
 def run(gs):
     validate_selection(gs)
     lite_archives = []

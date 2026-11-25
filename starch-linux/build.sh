@@ -2,23 +2,26 @@
 set -euo pipefail
 build_started_seconds=$SECONDS
 REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+PROJECT_ROOT=$(dirname -- "$REPO_ROOT")
+ISO_OUTPUT="$PROJECT_ROOT/starch-out"
+LUU_INPUT="$PROJECT_ROOT/luu-input"
 source "$REPO_ROOT/scripts/build/paths.sh"
 if (( $# != 1 )) || [[ $1 != --check && $1 != --build && $1 != --compile ]]; then
     echo 'Usage: build.sh --check | --build | --compile' >&2
     exit 2
 fi
 failed=0
-for tool in mkarchiso pacman pacman-key realpath df mountpoint python3 sha256sum tee; do
+for tool in mkarchiso pacman pacman-key gpgconf realpath df mountpoint python3 sha256sum tee; do
     if ! command -v "$tool" >/dev/null; then echo "Missing tool: $tool" >&2; failed=1; fi
 done
 for name in work cache logs; do
     if ! validate_generated_dir "$name"; then failed=1; fi
 done
-if [[ -L "$REPO_ROOT/starch-out" || ( -e "$REPO_ROOT/starch-out" && ! -d "$REPO_ROOT/starch-out" ) ]]; then
+if [[ -L "$ISO_OUTPUT" || ( -e "$ISO_OUTPUT" && ! -d "$ISO_OUTPUT" ) ]]; then
     echo 'Refusing symlink or non-directory ISO output root' >&2
     failed=1
 fi
-if mountpoint -q "$REPO_ROOT/starch-out"; then
+if mountpoint -q "$ISO_OUTPUT"; then
     echo 'Refusing mounted ISO output root' >&2
     failed=1
 fi
@@ -31,17 +34,17 @@ if [[ -L "$REPO_ROOT/wallpapers" || ! -d "$REPO_ROOT/wallpapers" ]]; then
     failed=1
 fi
 shopt -s nullglob
-luu_appimages=("$REPO_ROOT/luu-input/"*.AppImage)
-luu_icons=("$REPO_ROOT/luu-input/"*.svg)
+luu_appimages=("$LUU_INPUT/"*.AppImage)
+luu_icons=("$LUU_INPUT/"*.svg)
 if (( ${#luu_appimages[@]} != 1 )); then
-    echo 'luu-input must contain exactly one *.AppImage file' >&2
+    printf '%s must contain exactly one *.AppImage file\n' "$LUU_INPUT" >&2
     failed=1
 elif [[ ! -f ${luu_appimages[0]} || -L ${luu_appimages[0]} ]]; then
     echo 'The Linux Update Utility AppImage must be a regular, non-symlink file' >&2
     failed=1
 fi
 if (( ${#luu_icons[@]} != 1 )); then
-    echo 'luu-input must contain exactly one *.svg icon file' >&2
+    printf '%s must contain exactly one *.svg icon file\n' "$LUU_INPUT" >&2
     failed=1
 elif [[ ! -f ${luu_icons[0]} || -L ${luu_icons[0]} ]]; then
     echo 'The Linux Update Utility icon must be a regular, non-symlink file' >&2
@@ -53,7 +56,7 @@ if [[ ! $available =~ ^[0-9]+$ ]] || (( available < 20 * 1024 * 1024 )); then
 fi
 (( failed == 0 )) || exit "$failed"
 [[ $1 != --check ]] || exit 0
-mkdir -p -- "$REPO_ROOT/build/"{work,cache,logs} "$REPO_ROOT/starch-out"
+mkdir -p -- "$REPO_ROOT/build/"{work,cache,logs} "$ISO_OUTPUT"
 for name in work cache logs; do
     generated_dir="$REPO_ROOT/build/$name"
     if [[ ! -w $generated_dir || ! -x $generated_dir ]]; then
@@ -62,13 +65,15 @@ for name in work cache logs; do
         exit 1
     fi
 done
-if [[ ! -w "$REPO_ROOT/starch-out" || ! -x "$REPO_ROOT/starch-out" ]]; then
-    printf 'ISO output directory is not writable by the current user: %s\n' "$REPO_ROOT/starch-out" >&2
+if [[ ! -w "$ISO_OUTPUT" || ! -x "$ISO_OUTPUT" ]]; then
+    printf 'ISO output directory is not writable by the current user: %s\n' "$ISO_OUTPUT" >&2
     exit 1
 fi
+build_namespace=()
 if (( EUID != 0 )); then
     # Archiso 90 supports rootless builds with subordinate UID/GID mappings.
-    unshare --map-auto --map-root-user -- true
+    build_namespace=(unshare --map-auto --map-root-user --)
+    "${build_namespace[@]}" true
 fi
 # Build/reuse the pinned installer in an isolated official-Arch build root.
 "$REPO_ROOT/scripts/build/calamares.sh" --ensure
@@ -76,7 +81,7 @@ fi
 # Fresh paths avoid mkarchiso's run-once markers reusing an older profile.
 run_dir=$(mktemp -d "$REPO_ROOT/build/work/run-XXXXXXXX")
 run_id=${run_dir##*/}
-output="$REPO_ROOT/starch-out/$run_id"
+output="$ISO_OUTPUT/$run_id"
 if [[ $1 == --compile ]]; then
     output="$run_dir/artifacts"
 fi
@@ -84,8 +89,13 @@ mkdir -- "$output"
 log="$REPO_ROOT/build/logs/$run_id.log"
 exec > >(tee "$log") 2>&1
 printf 'Build output: %s\nBuild log: %s\n' "$output" "$log"
+keyring=
 report_exit() {
     local build_status=$?
+    if [[ -n $keyring ]]; then
+        "${build_namespace[@]}" gpgconf --homedir "$keyring" --kill gpg-agent || true
+        rm -rf -- "$keyring"
+    fi
     if (( build_status != 0 )); then
         printf 'Build failed (exit %s). See %s\n' "$build_status" "$log"
     fi
@@ -93,7 +103,7 @@ report_exit() {
 trap report_exit EXIT
 # Snapshot inputs so edits during a build cannot change what it consumes.
 cp -a -- "$REPO_ROOT/archiso/profile" "$run_dir/profile"
-cp -a -- "$REPO_ROOT/luu-input" "$run_dir/luu-input"
+cp -a -- "$LUU_INPUT" "$run_dir/luu-input"
 cp -a -- "$REPO_ROOT/wallpapers" "$run_dir/wallpapers"
 python3 "$REPO_ROOT/scripts/build/stage-installer.py" "$run_dir/profile" "$run_dir/luu-input" "$run_dir/wallpapers"
 cp -a -- "$REPO_ROOT/build/calamares/repo" "$run_dir/installer-repo"
@@ -101,11 +111,9 @@ printf '\ncalamares-starch\n' >>"$run_dir/profile/packages.x86_64"
 printf '\n[starch]\nSigLevel = Optional TrustAll\nServer = file://%s\n' "$run_dir/installer-repo" >>"$run_dir/profile/pacman.conf"
 # Rootless pacstrap cannot write to the host's root-owned GPGDir. Build a
 # private trust database from the installed official Arch keyring instead.
-keyring="$run_dir/pacman-gnupg"
-keyring_command=(pacman-key --gpgdir "$keyring")
-if (( EUID != 0 )); then
-    keyring_command=(unshare --map-auto --map-root-user -- "${keyring_command[@]}")
-fi
+# GnuPG can place its Unix sockets inside this directory in a user namespace.
+keyring=$(mktemp -d /tmp/starch-gpg.XXXXXXXX)
+keyring_command=("${build_namespace[@]}" pacman-key --gpgdir "$keyring")
 "${keyring_command[@]}" --init
 "${keyring_command[@]}" --populate archlinux
 python3 - "$run_dir/profile/pacman.conf" "$REPO_ROOT/build/cache" "$keyring" <<'CONFIG'
@@ -121,7 +129,14 @@ cat "$run_dir/installer-repo/package-version.txt" >>"$output/build-report.txt"
 cp -- "$REPO_ROOT/manifests/minimal-packages.txt" "$output/target-requested-packages.txt"
 cp -a -- "$run_dir/installer-repo/sources" "$output/calamares-sources"
 cp -a -- "$run_dir/installer-repo/notices" "$output/calamares-notices"
-tar -C "$REPO_ROOT" -czf "$output/starch-installer-source.tar.gz" build.sh scripts calamares manifests packages/calamares packages/starch-lite wallpapers tests README.md docs/third-party-provenance.tsv docs/starch-lite.md
+readme_dir="$REPO_ROOT"
+if [[ ! -f "$readme_dir/README.md" ]]; then
+    readme_dir="$REPO_ROOT/.."
+fi
+tar -czf "$output/starch-installer-source.tar.gz" \
+    -C "$readme_dir" README.md \
+    -C "$REPO_ROOT" build.sh scripts calamares manifests packages/calamares packages/starch-lite wallpapers tests \
+    docs/third-party-provenance.tsv docs/starch-lite.md
 cp -a -- "$REPO_ROOT/build/starch-lite/artix-repo/sources" "$output/starch-lite-sources"
 cp -- "$REPO_ROOT/build/starch-lite/artix-repo/bundle.json" "$output/starch-lite-bundle.json"
 cp -- "$run_dir/profile/packages.x86_64" "$output/requested-packages.txt"
@@ -135,14 +150,14 @@ if (( EUID == 0 )); then
 else
     unshare --map-auto --map-root-user -- python3 "$REPO_ROOT/scripts/validate/built-live.py" "$run_dir/work/x86_64/airootfs"
 fi
-awk '$1 == "linux" || $1 == "plasma-workspace" || $1 == "sddm" || $1 == "fastfetch"' "$output/live-packages.txt" >>"$output/build-report.txt"
+awk '$1 == "linux" || $1 == "xfce4-session" || $1 == "lightdm" || $1 == "fastfetch"' "$output/live-packages.txt" >>"$output/build-report.txt"
 isos=("$output/"*.iso)
 (( ${#isos[@]} == 1 )) || { echo 'Expected exactly one ISO' >&2; exit 1; }
 (cd -- "$output" && sha256sum -- "${isos[0]##*/}" >SHA256SUMS)
 printf 'Build and filesystem validation passed; VM boot remains untested.\n' >>"$output/build-report.txt"
 if [[ $1 == --compile ]]; then
     # Include the run ID so same-day builds coexist. Link without overwriting.
-    destination="$REPO_ROOT/starch-out/${isos[0]##*/}"
+    destination="$ISO_OUTPUT/${isos[0]##*/}"
     destination="${destination%.iso}-$run_id.iso"
     ln -- "${isos[0]}" "$destination"
     rm -- "${isos[0]}"
