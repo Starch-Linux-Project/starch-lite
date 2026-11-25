@@ -8,4 +8,4 @@ Upstream README declares GPL-3.0-or-later; package metadata agrees. Authors are 
 
 ## Starch modifications
 
-The Starch profile includes live Plasma/SDDM, account, networking and Fastfetch changes. `baseline.json` describes the original upstream tree for comparison. See [Live desktop](../../live-desktop.md). The upstream scripts and notices remain identifiable; new Starch files are project-authored configuration.
+The Starch profile includes live Xfce/LightDM, account, networking and Fastfetch changes. `baseline.json` describes the original upstream tree for comparison. See [installation documentation](../../installation-profiles.md). The upstream scripts and notices remain identifiable; new Starch files are project-authored configuration.

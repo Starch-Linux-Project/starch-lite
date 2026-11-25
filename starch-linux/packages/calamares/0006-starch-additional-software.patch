@@ -154,7 +154,7 @@ new file mode 100644
 +        QVariantMap state;
 +        // Explicit allowlist: never serialize passwords or all global storage.
 +        for (const auto* key : {"rootMountPoint", "starchTargetDisk", "partitions", "bootLoader",
-+                               "firmwareType", "starchLite", "starchDesktop", "starchLiteXfce",
++                               "firmwareType", "starchProfile",
 +                               "starchEssentialComplete"})
 +            state.insert(key, storage->value(key));
 +        QJsonObject payload{{"state", QJsonObject::fromVariantMap(state)},

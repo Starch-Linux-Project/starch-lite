@@ -1,8 +1,7 @@
 # Linux Update Utility
 
 Linux Update Utility is included in the live environment and installed system.
-Open it from the application menu or its pinned Plasma or Starch Lite Xfce
-panel icon.
+Open it from the application menu or its pinned Xfce panel icon.
 
 The Xfce panel launcher references `/usr/share/applications/linux-update-utility.desktop`
 directly. That entry uses the installed SVG's absolute path, so the launcher

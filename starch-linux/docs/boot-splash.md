@@ -1,8 +1,7 @@
 # Boot splash
 
-Installed systems show the Starch logo centered on a black background.
-UEFI installations use a unified kernel image splash; BIOS installations use
-Plymouth. On BIOS systems, press Escape to show boot text. Hardware without a
-working graphics framebuffer may fall back to text.
+UEFI installations show the Starch logo through the unified kernel image
+splash. BIOS installations load the Linux Zen kernel and initramfs directly
+from the Limine menu.
 
 The live ISO has a separate Starch background in its BIOS boot menu.

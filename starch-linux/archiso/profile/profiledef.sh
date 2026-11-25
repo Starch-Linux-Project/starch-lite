@@ -22,6 +22,7 @@ file_permissions=(
   ["/usr/share/applications/linux-update-utility.desktop"]="0:0:644"
   ["/etc/sudoers.d/10-starch-live"]="0:0:440"
   ["/usr/local/lib/starch/setup-live-user"]="0:0:755"
+  ["/usr/local/lib/starch/trust-installer-launcher"]="0:0:755"
   ["/usr/lib/starch-lite/xfce-defaults"]="0:0:755"
   ["/etc/shadow"]="0:0:400"
   ["/root"]="0:0:750"

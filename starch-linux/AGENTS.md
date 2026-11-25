@@ -98,27 +98,21 @@ Preserve these boundaries unless the task explicitly changes them:
 | `calamares/settings.conf` | Installer page sequence and execution job order. |
 | `calamares/modules/` | Module configuration, including erase-disk and display-manager behavior. |
 | `calamares/branding/starch/` | Installer branding, content, artwork, and stylesheet. |
-| `calamares/pacman.conf` | Standard target repository configuration. |
+| `calamares/pacman.conf` | Dedicated Arch package build-root repository configuration. |
 | `calamares/pacman-lite.conf` | Lite target repository order and signature policy. |
-| `manifests/minimal-packages.txt` | Baseline installed package requests; profile helpers transform this list. |
-| `scripts/installer/` | Starch installer stages, validation, profile selection, and target configuration. |
+| `manifests/minimal-packages.txt` | Installed package requests before hardware detection. |
+| `scripts/installer/` | Starch installer stages, validation, installation identity, and target configuration. |
 | `scripts/build/stage-installer.py` | Copies maintained sources into a generated profile and assembles target overlays. |
 | `scripts/build/calamares*.sh` | Isolated Calamares package construction and chroot operations. |
 | `scripts/build/starch-lite*.sh` | Lite integration package and verified bundle construction. |
 | `packages/calamares/` | Pinned PKGBUILD and Starch patches to upstream Calamares. |
 | `packages/starch-lite/integration/` | Lite integration PKGBUILD, OpenRC banner/zram services and Xfce defaults; audio uses upstream Artix services. |
 | `packages/starch-lite/artix-keyring.json` | Pinned bootstrap keyring source and checksum. |
-| `packages/starch-cosmic/root/` | Supported COSMIC target overlay and account defaults. |
-| `packages/starch-cosmic/lite-root/` | Compatibility material; not a separately supported selectable profile. |
-| `packages/starch-rotation/root/` | Session rotation helper, autostart, and lock launcher. |
 | `packages/linux-update-utility/` | Starch desktop integration for a separately supplied AppImage. |
 | `fastfetch-text` | Maintained root artwork; staging refreshes the live copy from this file. |
 | `wallpapers/` | Wallpaper source inputs and packaging guidance. |
 | `scripts/validate/` | Schema checks, Calamares launch smoke test, and built-live filesystem checks. |
 | `tests/unit/` | Python `unittest` suite using fixtures, temporary trees, and mocked system boundaries. |
-| `tests/fixtures/installation-profiles.json` | Profile expectation fixtures. |
-| `tests/calamares/` | Native Qt profile-selection test and its build instructions. |
-| `tests/integration/rotation-dbus.py` | Rotation integration on a private D-Bus instance. |
 | `scripts/collect-inventory.sh` | Host inventory collection; inspect scope and generated output before sharing it. |
 | `docs/` | Public behavior, supported scope, and licensing documentation. |
 | `docs/third-party/` | Recorded upstream notices and baseline material. |
@@ -187,15 +181,13 @@ before `users` creates the account.
 | Module | Responsibility |
 | --- | --- |
 | `runtime.py` | Live-environment guard, checked subprocesses, disk identity, mounted-target validation, writes, log preservation, and stage error reporting. |
-| `profiles.py` | Canonical profile/desktop identity, valid combinations, package transforms, COSMIC dependency audit, kernel choice, and Lite bundle verification. |
+| `profiles.py` | Fixed target identity and Lite bundle verification. |
 | `preflight.py` | Validate selection and erase mode, inspect/deactivate selected-disk consumers, resolve packages and trust, recheck the disk, and save the resolved selection. |
 | `bootstrap.py` | Validate saved identity and Lite inputs, run bounded `pacstrap` retries, install verified local integration, and seed overlays before account creation. |
-| `configure.py` | Configure the installed system and dispatch profile-specific setup. |
-| `cosmic.py` | COSMIC login/session/default configuration and validation. |
+| `configure.py` | Configure the installed Xfce/OpenRC system. |
 | `lite.py` | OpenRC service/session setup, EFI stub handling, and Lite validation. |
 | `graphics.py` | Display-device identification and kernel-aware graphics package selection. |
 | `repositories.py` | Isolated Lite signing trust bootstrap. |
-| `media_defaults.py` | Media MIME defaults and their validation. |
 | `limine.py` | Initial installed-system bootloader deployment and maintenance enrollment. |
 | `limine_update.py` | Later validation and refresh of installed Limine loader files/stages. |
 | `validate.py` | Final installed-target checks and essential-completion gate. |
@@ -218,7 +210,7 @@ disable them. Changes to this boundary require meaningful negative-case tests.
 - The selected path must resolve to a block device and the intended whole disk.
 - The installation root must be a separate mount directly under `/tmp` with a
   `calamares-root-` name, not a symlink, host `/`, or an ordinary directory.
-- Saved profile and disk identity must match the current Calamares selection.
+- Saved installation and disk identity must match the current Calamares state.
 - Root must be exactly the expected ext4 partition on that disk. Compare the
   mounted filesystem's `MAJ:MIN` with the selected partition's identity.
 - UEFI requires the expected FAT32 partition mounted at `/boot/efi`; BIOS
@@ -271,29 +263,21 @@ HTML. Failure must not be presented as installation success.
 
 ### Dedicated profile initialization
 
-The staged preflight entry point sets `starchLite`, `starchDesktop`, and
-`starchLiteXfce` to the fixed Xfce/OpenRC combination before calling
-`validate_selection()` and preparing the disk. The ISO build requires the
-verified Lite bundle. Bootstrap and later jobs recheck the saved identity.
-Legacy package and desktop helpers remain covered by compatibility tests.
+Preflight sets the string `starchProfile` to `lite-xfce` and requires the
+verified Lite bundle before disk preparation. Mounted-target jobs recheck
+the saved installation identity and disk. The optional software job forwards
+the same identity in its explicit storage allowlist.
 
 ### Package sources and transaction checks
 
-Keep live requests in `archiso/profile/packages.x86_64` and baseline target
-requests in `manifests/minimal-packages.txt`. Use `profiles.py` for target
-transformations. The manifest parser rejects duplicates, empty manifests,
-options, and invalid package names; preserve that behavior.
+Keep live package requests in `archiso/profile/packages.x86_64` and installed
+package requests in `manifests/minimal-packages.txt`. Preflight adds hardware
+packages to the target manifest. Preserve rejection of duplicate and invalid
+entries, options, and empty manifests.
 
-Standard targets use Arch repositories. Lite uses Artix repositories before
-Arch `extra`, with Arch `core` disabled. Do not inherit unrelated host repository
-settings or allow host mirror configuration to silently change this boundary.
-
-COSMIC uses explicit package roots and an audit of the resolved transaction,
-including transitive dependencies. The current audit pins specified components
-to upstream version `1.11.0` after handling package epoch/release syntax. A new
-version requires review of defaults, startup, greeter/locking, portals, keyboard,
-and display command formats. Do not simply remove the version check to make a
-new repository transaction pass.
+The target uses Artix repositories before Arch `extra`, with Arch `core`
+disabled. Use the dedicated Arch repository configuration for the package
+build roots. Preserve isolated keyrings and avoid inheriting host mirrors.
 
 Graphics selection must remain based on display hardware and the target kernel.
 Review unknown vendors, hybrid GPUs, unsupported NVIDIA IDs, fallback behavior,
@@ -306,7 +290,7 @@ selection vendor-based and conservative for unknown input.
   `artix-arch-extra` and the expected `starch-lite` and `artix-keyring` entries.
 - Verify allowed package names, basenames, regular-file status, non-symlink
   inputs, and SHA-256 checksums before using a bundle. Inspect the actual Lite
-  archive identity (`0.2.2-18`) and reject retired audio/PAM payloads. Update the
+  archive identity (`0.2.2-19`) and reject retired desktop and audio/PAM payloads. Update the
   reviewed package version in `profiles.verify_lite_archive()` on package releases.
 - Preserve the pinned Artix keyring acquisition record and checksum.
 - Lite trust initialization is isolated; it must not populate or weaken the
@@ -326,16 +310,16 @@ systems: its user account, sudo policy, autologin, power/lock behavior, network
 state, and build-only hooks. Preserve the explicit staging allowlist and the
 distinction between shared target and desktop-specific overlays.
 
-`stage-installer.py` currently assembles shared `target-overlay`, separate
-desktop overlays, and a `rotation-overlay`. `bootstrap.apply_defaults()` applies
-them according to the selected profile before user creation.
+`stage-installer.py` assembles a single `target-overlay`.
+`bootstrap.apply_defaults()` copies it and seeds Xfce defaults and OpenRC
+user services before user creation.
 
 When changing a default:
 
 1. Identify whether it belongs to the live session, all installed systems, one
    desktop, one init system, or a new user's home.
 2. Edit the maintained source for that scope.
-3. Check how staging copies it and which profile receives it.
+3. Check how staging copies it and where it is installed.
 4. Check required permissions in `profiledef.sh`, package installation, and
    bootstrap. Archiso can normalize nested overlay modes.
 5. Check that account defaults are seeded before the account is created.
@@ -349,6 +333,7 @@ changing distribution naming or release information.
 
 ### Live Xfce and installer launch
 
+The live Xfce session registers trust for the shipped installer shortcut at login.
 The live installer launcher is
 `archiso/profile/airootfs/usr/local/bin/starch-install`. It launches elevated
 Calamares on X11 using Qt's `xcb` backend, preserving `DISPLAY` and
@@ -358,27 +343,6 @@ The launcher offers standard keyboard mode by default and an optional
 on-screen-keyboard mode for installer fields. Keep that choice scoped to the
 installer.
 Installed-system autologin must remain disabled and validated.
-
-### COSMIC
-
-COSMIC uses greetd/COSMIC Greeter and dedicated overlay defaults. Preserve the
-separation from Plasma and Lite display managers, sessions, and configuration.
-
-COSMIC LTS uses Arch's vendor greeter units, with no full `/etc` replacements or
-Starch service drop-ins. Keep the custom greeter launcher provisionally until its
-bus/environment equivalence is tested; retain scoped `starch-greetd` PAM/keyring
-integration. The reviewed Arch greeter 1:1.11.0-1 selects `login` for locking via
-its packaging revert. COSMIC OSD supplies polkit; the GNOME fallback and unused
-lock PAM overlay now live only in the dormant `lite-root` compatibility input.
-Arch greeter/OSD package releases are audited exactly before fresh installation.
-Do not turn installer configuration into an installed-system migration. See
-`docs/cosmic.md` and the reversible procedure in `docs/cosmic-migration.md`.
-
-
-The on-screen keyboard uses manual activation. Its default is the `false` value
-at `/etc/skel/.local/state/cosmic/com.system76.CosmicOSK/v1/ime_activation`.
-This is a state path, not a `.config` path. Validate that it reaches the created
-user's home and preserve subsequent user changes.
 
 ### Lite
 
@@ -400,18 +364,6 @@ New Lite accounts receive the packaged two-panel Xfce layout through bootstrap
 with intelligent hiding. Launchers use installed system desktop entries; preserve
 existing users' panel settings.
 
-### Rotation
-
-Plasma uses KWin and Qt Sensors. Standard COSMIC receives Starch's session
-helper and `cosmic-randr`. Lite does not receive Starch automatic rotation
-integration or its sensor packages.
-
-Preserve active/unlocked-session checks, sensor claim/release, discovery retry,
-debouncing, internal-panel selection, dock/mirror/ambiguous-layout exclusion,
-mode/refresh preservation, persistent rotation lock, and clean shutdown.
-Do not activate dormant Xfce paths merely because helper tests exercise them.
-See `docs/rotation.md` for the private-bus test and hardware acceptance steps.
-
 ## 8. Bootloader and boot presentation
 
 Installed systems use Limine. The live ISO's GRUB/Syslinux/EFI files serve a
@@ -421,10 +373,9 @@ different boot path; changing one does not automatically change the other.
   Limine deployment under both the normal and fallback EFI locations.
 - BIOS targets use a GPT BIOS boot partition, a mounted FAT32 `/boot`, separate
   kernel/initramfs files, and the matching profile-specific kernel arguments.
-- Keep Linux LTS and Linux Zen filenames consistent across package selection,
-  initramfs/UKI construction, boot configuration, and final validation.
-- UEFI splash and BIOS Plymouth behavior are separate implementations. Do not
-  assume a splash change tested in one firmware mode covers the other.
+- Keep the Linux Zen filenames consistent across package requests, boot image
+  generation, boot configuration, and validation. Installed graphical splash
+  is provided by the UEFI UKI.
 
 The installer enrolls maintenance identity in `/etc/starch/limine.json` and
 installs pre/post pacman hooks for the Limine updater. Maintenance must validate
@@ -577,7 +528,6 @@ Use targeted discovery while iterating:
 
 ```sh
 python3 -m unittest discover -s tests/unit -p 'test_installer.py' -v
-python3 -m unittest discover -s tests/unit -p 'test_desktop_selection.py' -v
 python3 -m unittest discover -s tests/unit -p 'test_release_fixes.py' -v
 ```
 
@@ -591,16 +541,13 @@ offline `systemctl`; report skips and missing prerequisites accurately.
 | `test_scaffold.py` | Build/cleanup containment, explicit actions, path handling, and private-checkout isolation. |
 | `test_live_profile.py` | Live packages, users, desktop defaults, and image configuration. |
 | `test_installer.py` | Installer safety, target identity, staging, configuration, package bootstrap, and validation. |
-| `test_desktop_selection.py` | Supported profile identities, selection validation, package isolation, and fixtures. |
-| `test_cosmic.py` | COSMIC target configuration, defaults, overlays, media behavior, and isolation. |
 | `test_starch_lite.py` | Artix/Arch separation, bundle/trust checks, OpenRC/session integration, Xfce, and Lite staging. |
-| `test_rotation.py` | Display parsing, orientation behavior, mode preservation, and profile isolation. |
 | `test_release_fixes.py` | Shared storage, BIOS mount safety, graphics selection, and Limine maintenance. |
 
 Use temporary roots and mocked subprocess/system boundaries. Never turn a unit
 test into a real host partition, service, package, or bootloader operation.
 Useful negative cases include malformed state, changed disk identity, missing
-mounts, symlink inputs, bundle tampering, unsupported profiles, dependency drift,
+mounts, symlink inputs, bundle tampering, changed installer identity, dependency drift,
 network failure, command timeout, and failure before the first write.
 
 ### Calamares configuration schemas
@@ -617,7 +564,7 @@ archive lacks Starch's custom module schema. The validator contains a deliberate
 narrow exception for `defaultPartitionTableType`, consumed by upstream code but
 absent from its schema; preserve the source check supporting that exception.
 
-### Installer launch and native profile selection
+### Installer launch
 
 After building the package:
 
@@ -631,31 +578,16 @@ but it does modify generated chroot state. The timeout status indicates that
 the GUI remained open; inspect `build/calamares/smoke.log` for module errors.
 A successful launch does not prove a successful installation.
 
-The historical native profile test in `tests/calamares/` requires a package
-from the multi-profile installer. Use the preflight identity tests and the
-live filesystem validator for the dedicated installer.
-
-### Built live filesystem and rotation integration
+### Built live filesystem
 
 `build.sh` invokes `scripts/validate/built-live.py` against the assembled
 `airootfs`, within the appropriate namespace for a rootless build. This checks
 files, permissions, service links, desktop defaults, installer artifacts, and
 patch presence without executing the image. It is not a VM boot test.
 
-For rotation changes:
-
-```sh
-python3 tests/integration/rotation-dbus.py
-```
-
-This requires PyGObject, `dbus-daemon`, and permission to bind a temporary Unix
-socket. It uses a private bus and substitutes display operations. A sandbox or
-dependency failure is a blocked check, not evidence of a rotation regression
-or a passing integration test.
-
 ### VM and hardware acceptance
 
-For changes affecting installation or boot, test affected profiles and firmware
+For changes affecting installation or boot, test the target in both firmware
 modes on disposable VM disks. Exercise the relevant cases rather than claiming
 coverage from a single successful default installation:
 
@@ -688,11 +620,8 @@ entry directly, including the absolute icon path. Existing users can retain
 copied launcher entries; a new ISO does not repair their local panel state.
 Treat a panel icon issue separately from the AppImage's running-window icon.
 
-Wallpaper inputs are packaged for Plasma and, for compatible formats, copied
-for COSMIC discovery. Read `wallpapers/README.md` and the supported suffix sets
-in staging before adding formats. The optional Evergreen source has an explicit
-mapping; its absence should preserve upstream default behavior rather than
-break all wallpaper discovery.
+Wallpaper images are copied into the live root and target overlay. Read
+`wallpapers/README.md` and the supported suffix set before adding formats.
 
 Original Starch software is GPL-3.0-or-later. The root `fastfetch-text` artwork
 and its maintained live copy are CC0-1.0. Third-party material keeps its own
@@ -740,9 +669,8 @@ claim a successful build establishes release compliance.
 
 | Task | Review together |
 | --- | --- |
-| Add/remove an installed app | Manifest, profile transforms, resolved dependencies, launcher/MIME defaults, and relevant target tests. |
+| Add/remove an installed app | Manifest, resolved dependencies, launcher/MIME defaults, and relevant target tests. |
 | Change the live desktop | Live packages, `airootfs` defaults, permissions, staging allowlist, and built-live validation. |
-| Change a profile | Qt patch, storage keys, profile helpers, preflight/bootstrap, configuration/validation, fixture, native test, and public profile docs. |
 | Change a package source | Pacman configs, isolated keyring handling, preflight resolution, bundle identity/checksums, and provenance. |
 | Change installer copy/artwork | Branding files, consuming presentation patch, asset staging, and launch/UI inspection. |
 | Change boot behavior | Profile kernel, configuration/initramfs generation, Limine setup/maintenance, final validation, BIOS/UEFI tests. |
@@ -763,12 +691,10 @@ command, source changes, relevant log, and artifact paths before cleanup.
 | Calamares build fails | Pinned-source/patch checksums, patch context, pybind11/toolchain compatibility, and isolated package logs. |
 | Installer page/module fails to load | Staged settings, built module set, matching schema, plugin linkage, and smoke log. |
 | Lite bundle verification fails | Bundle availability, staging configuration, manifest identity, and checksums. |
-| COSMIC preflight rejects packages | Actual resolved transaction, forbidden/missing packages, and audited component versions. |
 | Pacstrap fails | Network/mirror/signature error and selected repository/keyring; retain bounded retry behavior. |
 | Installed system will not boot | Firmware mode, actual mounted boot filesystem, selected kernel artifacts, Limine config, and enrolled identities. |
 | A default is absent for a new user | Correct overlay, copy order before `users`, final path, and file permissions. |
 | An existing user keeps old defaults | Per-user persisted/copied configuration; distinguish new-install defaults from migration. |
-| Rotation does nothing | Supported profile, active/unlocked session, sensor claim, panel topology, lock state, and parser output. |
 
 Inspect a small relevant log excerpt rather than dumping entire logs or inventory.
 Redact secrets if encountered. Do not remove failed output, suppress validation,

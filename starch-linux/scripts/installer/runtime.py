@@ -208,8 +208,9 @@ def target(gs):
     if not root.is_mount() or root.resolve() == Path('/'):
         raise RuntimeError('The installation root is not a separate mounted filesystem.')
     state = json.loads((STATE / 'selection.json').read_text())
-    from profiles import profile_name
-    if state.get('profile', 'standard') != profile_name(gs):
+    from profiles import DESKTOP, PROFILE, validate_selection
+    validate_selection(gs)
+    if state.get('profile') != PROFILE or state.get('desktop') != DESKTOP:
         raise RuntimeError('The installation profile changed after preflight.')
     disk = selected_disk(gs)
     if disk != state['disk']:

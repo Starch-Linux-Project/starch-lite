@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
 
-from test_starch_lite import ROOT, Storage, bootstrap, preflight, profiles, stage
+from test_starch_lite import ROOT, bootstrap, preflight, stage
 
 PAYLOAD = ROOT / 'packages/starch-lite/integration/root'
 PANEL = PAYLOAD / 'usr/share/starch-lite/xfce-panel.xml'
@@ -72,8 +72,7 @@ class XfcePanel(unittest.TestCase):
         # Firefox/COSMIC Terminal entries. No private per-launcher files are needed.
         entries = [('thunar', 'thunar.desktop'), ('cosmic-terminal', 'com.system76.CosmicTerm.desktop'),
                    ('firefox', 'firefox.desktop')]
-        selected = profiles.selected_packages(preflight.read_manifest(ROOT / 'manifests/minimal-packages.txt'),
-                                             Storage(starchLite=True, starchDesktop='xfce'))
+        selected = preflight.read_manifest(ROOT / 'manifests/minimal-packages.txt')
         ids = values(prop(panel, 'plugin-ids'))
         self.assertEqual(len(ids), len(entries))
         for plugin_id, (package, entry) in zip(ids, entries):
@@ -94,23 +93,18 @@ class XfcePanel(unittest.TestCase):
             binary = data / 'target-overlay/usr/local/bin/linux-update-utility.AppImage'
             binary.parent.mkdir(parents=True, exist_ok=True)
             binary.touch()
-            # Plasma exercises the non-Xfce branch; COSMIC isolation is also covered
-            # by test_cosmic's real staged overlay/bootstrap matrix.
-            for desktop, is_lite in [('xfce', True), ('plasma', False)]:
-                root = base / desktop
-                shutil.copytree(PAYLOAD, root)
-                existing = root / 'home/existing' / USER_PANEL
-                existing.parent.mkdir(parents=True)
-                existing.write_text('custom panel settings')
-                with patch.object(bootstrap, 'DATA', data):
-                    bootstrap.apply_defaults(root, Storage(starchLite=is_lite, starchDesktop=desktop))
-                seeded = root / 'etc/skel' / USER_PANEL
-                self.assertEqual(seeded.exists(), is_lite)
-                self.assertEqual(existing.read_text(), 'custom panel settings')
-                if is_lite:
-                    self.assertEqual(seeded.read_bytes(), PANEL.read_bytes())
-                    self.assertEqual(seeded.stat().st_mode & 0o777, 0o644)
-                    shutil.copytree(root / 'etc/skel', root / 'home/new', symlinks=True)
-                    self.assertEqual((root / 'home/new' / USER_PANEL).read_bytes(), PANEL.read_bytes())
+            root = base / 'target'
+            shutil.copytree(PAYLOAD, root)
+            existing = root / 'home/existing' / USER_PANEL
+            existing.parent.mkdir(parents=True)
+            existing.write_text('custom panel settings')
+            with patch.object(bootstrap, 'DATA', data):
+                bootstrap.apply_defaults(root)
+            seeded = root / 'etc/skel' / USER_PANEL
+            self.assertEqual(existing.read_text(), 'custom panel settings')
+            self.assertEqual(seeded.read_bytes(), PANEL.read_bytes())
+            self.assertEqual(seeded.stat().st_mode & 0o777, 0o644)
+            shutil.copytree(root / 'etc/skel', root / 'home/new', symlinks=True)
+            self.assertEqual((root / 'home/new' / USER_PANEL).read_bytes(), PANEL.read_bytes())
             execution = (ROOT / 'calamares/settings.conf').read_text().split('  - exec:', 1)[1]
             self.assertLess(execution.index('- starch-bootstrap'), execution.index('- users'))

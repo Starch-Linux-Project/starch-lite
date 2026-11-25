@@ -27,7 +27,7 @@ def supported_nvidia_ids(readme):
     return {tuple(int(value, 16) for value in row.split()) for row in rows}
 
 
-def package_selection(devices, supported, kernel='linux-lts'):
+def package_selection(devices, supported):
     vendors = {device[0] for device in devices}
     packages = []
     if 0x8086 in vendors:
@@ -40,8 +40,7 @@ def package_selection(devices, supported, kernel='linux-lts'):
         # nvidia-utils blacklists Nouveau globally. Keep Nouveau available
         # when any NVIDIA GPU requires it, including mixed-generation PCs.
         if all(device in supported or (device[0],) in supported for device in nvidia):
-            packages += (['nvidia-open-dkms', 'linux-zen-headers', 'nvidia-utils']
-                         if kernel == 'linux-zen' else ['nvidia-open-lts', 'nvidia-utils'])
+            packages += ['nvidia-open-dkms', 'linux-zen-headers', 'nvidia-utils']
             if vendors & {0x8086, 0x1002}:
                 packages.append('nvidia-prime')
         else:
@@ -49,7 +48,7 @@ def package_selection(devices, supported, kernel='linux-lts'):
     return list(dict.fromkeys(packages))
 
 
-def select_packages(pacman, state, kernel='linux-lts'):
+def select_packages(pacman, state):
     devices = display_devices()
     supported = set()
     if any(device[0] == 0x10de for device in devices):
@@ -71,8 +70,8 @@ def select_packages(pacman, state, kernel='linux-lts'):
                 raise RuntimeError('The NVIDIA package is missing its compatibility table.')
             readme = output(['bsdtar', '-xOf', archive, readmes[0]])
             supported = supported_nvidia_ids(readme)
-            packages = package_selection(devices, supported, kernel)
-            module = 'nvidia-open-dkms' if kernel == 'linux-zen' else 'nvidia-open-lts'
+            packages = package_selection(devices, supported)
+            module = 'nvidia-open-dkms'
             if module in packages:
                 versions = dict(line.split() for line in output([
                     *pacman, '-Sp', '--print-format', '%n %v', module]).splitlines())
@@ -80,4 +79,4 @@ def select_packages(pacman, state, kernel='linux-lts'):
                 utils_version = versions.get('nvidia-utils', '').split(':')[-1].rsplit('-', 1)[0]
                 if source_version != utils_version:
                     raise RuntimeError('NVIDIA package metadata is out of sync. Retry after the mirror updates.')
-    return package_selection(devices, supported, kernel)
+    return package_selection(devices, supported)

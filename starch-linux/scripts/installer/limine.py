@@ -5,7 +5,7 @@ import re
 import shutil
 
 from runtime import chroot, output, selected_disk, target
-from profiles import is_lite, kernel_name
+from profiles import KERNEL
 
 
 def root_uuid(fstab):
@@ -15,16 +15,15 @@ def root_uuid(fstab):
     return match.group(1)
 
 
-def configuration(_uuid, kernel='linux-lts'):
-    label = 'Starch Lite' if kernel == 'linux-zen' else 'Starch Lite LTS'
+def configuration():
     return (
         'timeout: 5\n'
         'default_entry: 1\n'
         'interface_branding: Starch Lite\n'
         '\n'
-        f'/{label}\n'
+        '/Starch Lite\n'
         '    protocol: efi\n'
-        f'    path: boot():/EFI/Linux/starch-{kernel}.efi\n'
+        f'    path: boot():/EFI/Linux/starch-{KERNEL}.efi\n'
     )
 
 
@@ -47,7 +46,7 @@ def install_maintenance(root, mode):
 
 def run(gs):
     root = target(gs)
-    kernel = kernel_name(gs)
+    kernel = KERNEL
     disk = selected_disk(gs)
     uuid = root_uuid((root / 'etc/fstab').read_text())
     if gs.value('firmwareType') == 'efi':
@@ -60,7 +59,7 @@ def run(gs):
             loader = esp / relative
             loader.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, loader / 'BOOTX64.EFI')
-        config = configuration(uuid, kernel)
+        config = configuration()
         (esp / 'EFI/Limine/limine.conf').write_text(config)
         (esp / 'EFI/BOOT/limine.conf').write_text(config)
 
@@ -86,8 +85,8 @@ def run(gs):
     loader = root / 'boot/limine'
     loader.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(root / 'usr/share/limine/limine-bios.sys', loader / 'limine-bios.sys')
-    label = 'Starch Lite' if is_lite(gs) else 'Starch Lite LTS'
-    options = 'init=/usr/bin/openrc-init' if is_lite(gs) else 'quiet splash'
+    label = 'Starch Lite'
+    options = 'init=/usr/bin/openrc-init'
     (loader / 'limine.conf').write_text(
         'timeout: 5\ndefault_entry: 1\ninterface_branding: Starch Lite\n\n'
         f'/{label}\n    protocol: linux\n'

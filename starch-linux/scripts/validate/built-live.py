@@ -56,13 +56,21 @@ for module in ["welcome", "locale", "keyboard", "partition", "users", "summary",
     assert (root / "usr/lib/calamares/modules" / module / "module.desc").is_file(), f"Missing module: {module}"
 assert not (root / "usr/lib/calamares/modules/starchadvanced").exists(), "Profile module shipped in Lite installer"
 assert "starchadvanced" not in (root / "etc/calamares/settings.conf").read_text()
-assert "preflight.run_lite" in (root / "usr/lib/calamares/modules/starch-preflight/main.py").read_text()
+assert "preflight.run" in (root / "usr/lib/calamares/modules/starch-preflight/main.py").read_text()
 assert (root / "usr/share/starch-installer/lite/bundle.json").is_file(), "Missing verified Lite bundle"
 assert (root / "usr/local/bin/starch-install").stat().st_mode & 0o111, "Installer launcher is not executable"
 launcher = (root / "usr/local/bin/starch-install").read_text()
 assert "kdialog --title" in launcher and 'standard "Standard keyboard" on' in launcher and "unset QT_IM_MODULE" in launcher, "Installer has no standard-keyboard chooser default"
 assert "--on-screen-keyboard" in launcher and "export QT_IM_MODULE=qtvirtualkeyboard" in launcher, "Installer has no optional Qt Virtual Keyboard mode"
-assert (home / "Desktop/starch-install.desktop").is_file(), "Live desktop installer shortcut is missing"
+shortcut = home / "Desktop/starch-install.desktop"
+assert shortcut.is_file() and not shortcut.is_symlink(), "Live desktop installer shortcut is missing"
+assert shortcut.stat().st_mode & 0o111, "Live desktop installer shortcut is not executable"
+assert shortcut.read_bytes() == (root / "usr/share/applications/starch-install.desktop").read_bytes(), "Live desktop shortcut differs from shipped launcher"
+trust_helper = "/usr/local/lib/starch/trust-installer-launcher"
+assert (root / trust_helper.lstrip("/")).stat().st_mode & 0o111, "Missing executable launcher trust helper"
+autostart = configparser.ConfigParser()
+autostart.read(root / "etc/xdg/autostart/starch-trust-installer.desktop")
+assert autostart["Desktop Entry"]["Exec"] == trust_helper, "Launcher trust helper is not started at login"
 partition_modules = list((root / "usr/lib/calamares/modules/partition").glob("*.so"))
 assert len(partition_modules) == 1 and b"Starch erase target:" in partition_modules[0].read_bytes(), "Calamares partition safety patch is missing"
 print("Built installer filesystem validation passed")

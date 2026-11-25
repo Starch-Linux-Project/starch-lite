@@ -57,10 +57,10 @@ class BiosMountSafety(unittest.TestCase):
         for failure in (None, 'missing', 'ext4', 'other-disk', 'wrong-mount', 'unmounted'):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory(prefix='calamares-root-') as directory:
                 root = Path(directory)
-                (root / 'selection.json').write_text(json.dumps({'disk': '/dev/vda'}))
+                (root / 'selection.json').write_text(json.dumps({'disk': '/dev/vda', 'profile': 'lite-xfce', 'desktop': 'xfce'}))
                 boot = {'mountPoint': '/boot', 'fs': 'ext4' if failure == 'ext4' else 'fat32',
                         'device': '/dev/vda2'}
-                values = {'rootMountPoint': directory, 'firmwareType': 'bios',
+                values = {'starchProfile': 'lite-xfce', 'rootMountPoint': directory, 'firmwareType': 'bios',
                           'bootLoader': {'installPath': '/dev/vda'},
                           'partitions': [{'mountPoint': '/', 'fs': 'ext4', 'device': '/dev/vda3'}]
                                         + ([] if failure == 'missing' else [boot])}
@@ -109,7 +109,7 @@ class GraphicsSelection(unittest.TestCase):
         self.assertEqual(graphics.package_selection([], supported), [])
         self.assertEqual(graphics.package_selection([(0x1234, 1, 0, 0)], supported), [])
         self.assertEqual(graphics.package_selection([self.amd], supported), ['vulkan-radeon'])
-        self.assertEqual(graphics.package_selection([self.nvidia], supported), ['nvidia-open-lts', 'nvidia-utils'])
+        self.assertEqual(graphics.package_selection([self.nvidia], supported), ['nvidia-open-dkms', 'linux-zen-headers', 'nvidia-utils'])
         hybrid = graphics.package_selection([self.intel, self.nvidia], supported)
         self.assertIn('vulkan-intel', hybrid)
         self.assertIn('intel-media-driver', hybrid)
@@ -118,7 +118,7 @@ class GraphicsSelection(unittest.TestCase):
         self.assertEqual(graphics.package_selection([self.old_nvidia], supported), ['vulkan-nouveau'])
         self.assertEqual(graphics.package_selection([self.nvidia, self.old_nvidia], supported), ['vulkan-nouveau'])
         self.assertEqual(graphics.package_selection([(0x10de, 0x1f02, 0x1028, 0x1234)], supported),
-                         ['nvidia-open-lts', 'nvidia-utils'])
+                         ['nvidia-open-dkms', 'linux-zen-headers', 'nvidia-utils'])
         self.assertEqual(graphics.package_selection([(0x10de, 0x1f02, 0x1028, 0xffff)], supported),
                          ['vulkan-nouveau'])
         with self.assertRaises(RuntimeError):
@@ -142,13 +142,13 @@ class GraphicsSelection(unittest.TestCase):
                         return 'usr/src/nvidia-1.2.3/README.md\nusr/src/nvidia-1.2.3/Makefile'
                     if '-xOf' in argv:
                         return self.readme
-                    return f'nvidia-open-lts 1:1.2.3-1\nnvidia-utils {version}-1\nlinux-lts 9.0-1'
+                    return f'nvidia-open-dkms 1:1.2.3-1\nnvidia-utils {version}-1\nlinux-zen-headers 9.0-1'
                 with patch.object(graphics, 'display_devices', return_value=[self.nvidia]), \
                      patch.object(graphics, 'command', side_effect=download), \
                      patch.object(graphics, 'output', side_effect=output):
                     if version == '1.2.3':
                         self.assertEqual(graphics.select_packages(['pacman'], Path(directory)),
-                                         ['nvidia-open-lts', 'nvidia-utils'])
+                                         ['nvidia-open-dkms', 'linux-zen-headers', 'nvidia-utils'])
                     else:
                         with self.assertRaisesRegex(RuntimeError, 'out of sync'):
                             graphics.select_packages(['pacman'], Path(directory))

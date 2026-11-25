@@ -1,6 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Automatic Screen Rotation
-Exec=/usr/bin/python3 /usr/lib/starch/rotation.py run
-OnlyShowIn=COSMIC;
-NoDisplay=true

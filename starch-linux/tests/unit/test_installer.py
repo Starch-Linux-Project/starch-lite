@@ -1,5 +1,4 @@
 import importlib.util
-import configparser
 import json
 from pathlib import Path
 import subprocess
@@ -75,28 +74,6 @@ class InstallerSafety(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 validate.validate_machine_id(root)
 
-    def test_legacy_installed_sddm_uses_wayland_compositor(self):
-        class GS:
-            def value(self, name):
-                return {'firmwareType': 'bios'}.get(name)
-
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            (root / 'etc').mkdir()
-            (root / 'etc/sddm.conf').write_text('[Autologin]\nUser=example\nSession=plasma.desktop\nRelogin=true\n')
-            with patch.object(configure, 'target', return_value=root), patch.object(configure, 'chroot'):
-                configure.run(GS())
-            installed = configparser.ConfigParser()
-            installed.read(root / 'etc/sddm.conf.d/10-starch.conf')
-            self.assertEqual(installed['General']['DisplayServer'], 'wayland')
-            self.assertEqual(installed['Wayland']['CompositorCommand'].split()[0], 'kwin_wayland')
-            self.assertIn('--inputmethod plasma-keyboard', installed['Wayland']['CompositorCommand'])
-            self.assertEqual(installed['Theme']['Current'], 'breeze')
-            self.assertNotIn('Autologin', installed)
-            installed.read(root / 'etc/sddm.conf')
-            self.assertEqual(installed['Autologin']['User'], '')
-            self.assertFalse(installed.getboolean('Autologin', 'Relogin'))
-
     def test_manifest_rejects_options_shell_text_duplicates_and_empty(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / 'packages'
@@ -104,8 +81,8 @@ class InstallerSafety(unittest.TestCase):
                 p.write_text(invalid)
                 with self.assertRaises(RuntimeError):
                     runtime.read_manifest(p)
-            p.write_text('base\n# comment\nlinux-lts\n')
-            self.assertEqual(runtime.read_manifest(p), ['base', 'linux-lts'])
+            p.write_text('base\n# comment\nlinux-zen\n')
+            self.assertEqual(runtime.read_manifest(p), ['base', 'linux-zen'])
 
     def test_microcode_is_vendor_based_and_unknown_is_empty(self):
         self.assertEqual(runtime.microcode('vendor_id : AuthenticAMD\n'), ['amd-ucode'])
@@ -195,6 +172,9 @@ class InstallerSafety(unittest.TestCase):
 
     def test_failed_sync_stops_before_selection_is_saved(self):
         class GS:
+            def insert(self, name, value):
+                pass
+
             def value(self, name):
                 return {'partitionChoices': {'install': 'erase', 'swap': 'none'}}.get(name)
         with tempfile.TemporaryDirectory() as d:
@@ -203,7 +183,9 @@ class InstallerSafety(unittest.TestCase):
                  patch.object(preflight, 'output', return_value=json.dumps({'blockdevices': []})), \
                  patch.object(preflight, 'deactivate_disk'), patch.object(preflight, 'check_disk_tree'), \
                  patch.object(preflight, 'read_manifest', return_value=['base']), \
-                 patch.object(Path, 'is_file', return_value=True), \
+                 patch.object(preflight, 'microcode', return_value=[]), \
+                 patch.object(preflight, 'verified_bundle', return_value=[]), \
+                 patch.object(preflight, 'prepare_lite_keyring'), \
                  patch.object(preflight, 'command', side_effect=RuntimeError('network unavailable')):
                 with self.assertRaisesRegex(RuntimeError, 'network unavailable'):
                     preflight.run(GS())
@@ -214,28 +196,7 @@ class InstallerSafety(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 runtime.command([sys.executable, '-c', 'raise SystemExit(7)'])
 
-    def test_preflight_selects_plymouth_only_for_bios(self):
-        for firmware in ('bios', 'efi'):
-            with self.subTest(firmware=firmware), tempfile.TemporaryDirectory() as d:
-                class GS:
-                    def value(self, name):
-                        return {'firmwareType': firmware,
-                                'partitionChoices': {'install': 'erase', 'swap': 'none'}}.get(name)
-                state = Path(d)
-                with patch.object(preflight, 'STATE', state), \
-                     patch.object(preflight, 'selected_disk', return_value='/dev/vda'), \
-                     patch.object(preflight, 'output', return_value='{}'), \
-                     patch.object(preflight, 'deactivate_disk'), patch.object(preflight, 'check_disk_tree'), \
-                     patch.object(preflight, 'read_manifest', return_value=['base']), \
-                     patch.object(preflight, 'microcode', return_value=[]), \
-                     patch.object(preflight, 'select_packages', return_value=['vulkan-intel']), \
-                     patch.object(Path, 'is_file', return_value=True), patch.object(preflight, 'command'):
-                    preflight.run(GS())
-                packages = json.loads((state / 'selection.json').read_text())['packages']
-                self.assertEqual('plymouth' in packages, firmware == 'bios')
-                self.assertIn('vulkan-intel', packages)
-
-    def test_bios_splash_is_configured_before_initramfs_generation(self):
+    def test_bios_limine_loads_zen_with_openrc(self):
         class GS:
             def value(self, name):
                 return {'firmwareType': 'bios'}.get(name)
@@ -246,14 +207,6 @@ class InstallerSafety(unittest.TestCase):
             (root / 'etc/fstab').write_text('UUID=test-root / ext4 defaults 0 1\n')
             (root / 'usr/share/limine').mkdir(parents=True)
             (root / 'usr/share/limine/limine-bios.sys').write_bytes(b'limine')
-            with patch.object(configure, 'target', return_value=root), patch.object(configure, 'chroot') as chroot:
-                configure.run(GS())
-            calls = [c.args[1:] for c in chroot.call_args_list]
-            self.assertLess(calls.index(('plymouth-set-default-theme', 'starch')),
-                            calls.index(('mkinitcpio', '-P')))
-            hooks = (root / 'etc/mkinitcpio.conf.d/10-starch.conf').read_text().split()
-            self.assertLess(hooks.index('systemd'), hooks.index('plymouth'))
-            self.assertLess(hooks.index('kms'), hooks.index('plymouth'))
             disk = {'blockdevices': [{'children': [{'partn': 1,
                     'parttype': '21686148-6449-6e6f-744e-656564454649'}]}]}
             with patch.object(limine, 'target', return_value=root), \
@@ -262,9 +215,9 @@ class InstallerSafety(unittest.TestCase):
                  patch.object(limine, 'chroot'):
                 limine.run(GS())
             config = (root / 'boot/limine/limine.conf').read_text()
-            self.assertIn('cmdline: root=UUID=test-root rw rootfstype=ext4 quiet splash', config)
-            self.assertIn('path: boot():/vmlinuz-linux-lts', config)
-            self.assertIn('module_path: boot():/initramfs-linux-lts.img', config)
+            self.assertIn('cmdline: root=UUID=test-root rw rootfstype=ext4 init=/usr/bin/openrc-init', config)
+            self.assertIn('path: boot():/vmlinuz-linux-zen', config)
+            self.assertIn('module_path: boot():/initramfs-linux-zen.img', config)
 
     def test_pipeline_checks_before_partition_and_success(self):
         settings = yaml.safe_load((ROOT / 'calamares/settings.conf').read_text())
@@ -278,23 +231,23 @@ class InstallerSafety(unittest.TestCase):
         self.assertNotIn('unpackfs', jobs)
         self.assertTrue(settings['prompt-install'])
         packages = runtime.read_manifest(ROOT / 'manifests/minimal-packages.txt')
-        self.assertIn('linux-lts', packages)
+        self.assertIn('linux-zen', packages)
         self.assertIn('limine', packages)
         self.assertIn('fuse2', packages)
         self.assertTrue({'nano', 'btop'} <= set(packages))
-        self.assertIn('plasma-keyboard', packages)
-        self.assertIn('qt6-virtualkeyboard', packages)
+        self.assertIn('xfce4-session', packages)
+        self.assertIn('lightdm', packages)
         self.assertTrue({'base-devel', 'qt6-base', 'cmake', 'jxrlib', 'libavif', 'libheif', 'nftables'}.issubset(packages))
         self.assertNotIn('grub', packages)
         self.assertFalse({'linux', 'calamares', 'archinstall', 'mkinitcpio-archiso', 'plasma-x11-session'} & set(packages))
 
-    def test_limine_configuration_chainloads_installed_lts_kernel(self):
+    def test_limine_configuration_chainloads_installed_zen_kernel(self):
         uuid = '12345678-1234-1234-1234-123456789abc'
         self.assertEqual(limine.root_uuid(f'UUID={uuid} / ext4 rw,relatime 0 1\n'), uuid)
-        config = limine.configuration(uuid)
+        config = limine.configuration()
         self.assertIn('protocol: efi', config)
-        self.assertIn('path: boot():/EFI/Linux/starch-linux-lts.efi', config)
-        self.assertNotIn('vmlinuz-linux-lts', config)
+        self.assertIn('path: boot():/EFI/Linux/starch-linux-zen.efi', config)
+        self.assertNotIn('vmlinuz-linux-zen', config)
         with self.assertRaises(RuntimeError):
             limine.root_uuid('UUID=ESP /boot/efi vfat defaults 0 2\n')
 
@@ -308,12 +261,14 @@ class InstallerSafety(unittest.TestCase):
             root = Path(d)
             (root / 'etc').mkdir()
             (root / 'etc/fstab').write_text(f'UUID={uuid} / ext4 defaults 0 1\n')
-            with patch.object(configure, 'target', return_value=root), patch.object(configure, 'chroot'):
+            with patch.object(configure, 'target', return_value=root), patch.object(configure, 'chroot'), \
+                 patch.object(configure.lite, 'configure'), \
+                 patch.object(configure.lite, 'efi_stub', return_value='/example.stub'):
                 configure.run(GS())
             self.assertEqual((root / 'etc/kernel/cmdline').read_text(),
-                             f'root=UUID={uuid} rw rootfstype=ext4\n')
-            preset = (root / 'etc/mkinitcpio.d/linux-lts.preset').read_text()
-            self.assertIn('default_uki="/boot/efi/EFI/Linux/starch-linux-lts.efi"', preset)
+                             f'root=UUID={uuid} rw rootfstype=ext4 init=/usr/bin/openrc-init\n')
+            preset = (root / 'etc/mkinitcpio.d/linux-zen.preset').read_text()
+            self.assertIn('default_uki="/boot/efi/EFI/Linux/starch-linux-zen.efi"', preset)
             self.assertTrue((root / 'boot/efi/EFI/Linux').is_dir())
 
     def test_limine_installs_uki_and_registers_efi_entry(self):
@@ -332,7 +287,7 @@ class InstallerSafety(unittest.TestCase):
             (root / 'usr/share/limine').mkdir(parents=True)
             (root / 'usr/share/limine/BOOTX64.EFI').write_bytes(b'limine')
             (root / 'boot/efi/EFI/Linux').mkdir(parents=True)
-            (root / 'boot/efi/EFI/Linux/starch-linux-lts.efi').write_bytes(b'uki')
+            (root / 'boot/efi/EFI/Linux/starch-linux-zen.efi').write_bytes(b'uki')
             (root / 'etc').mkdir()
             (root / 'etc/fstab').write_text(f'UUID={uuid} / ext4 defaults 0 1\n')
             with patch.object(limine, 'target', return_value=root), \
@@ -342,7 +297,7 @@ class InstallerSafety(unittest.TestCase):
                 limine.run(GS())
             self.assertEqual((root / 'boot/efi/EFI/Limine/BOOTX64.EFI').read_bytes(), b'limine')
             self.assertEqual((root / 'boot/efi/EFI/BOOT/BOOTX64.EFI').read_bytes(), b'limine')
-            self.assertIn('EFI/Linux/starch-linux-lts.efi',
+            self.assertIn('EFI/Linux/starch-linux-zen.efi',
                           (root / 'boot/efi/EFI/Limine/limine.conf').read_text())
             self.assertTrue((root / 'etc/pacman.d/hooks/99-starch-limine.hook').is_file())
             chroot.assert_any_call(
@@ -383,7 +338,7 @@ class InstallerSafety(unittest.TestCase):
             self.assertTrue((fs / 'etc/xdg/autostart/starch-xfce-defaults.desktop').is_file())
             self.assertTrue((fs / 'usr/share/xfce4/helpers/starch-cosmic-terminal.desktop').is_file())
             entrypoint = fs / 'usr/lib/calamares/modules/starch-preflight/main.py'
-            self.assertIn('libcalamares.globalstorage, preflight.run_lite)', entrypoint.read_text())
+            self.assertIn('libcalamares.globalstorage, preflight.run)', entrypoint.read_text())
             self.assertFalse((fs / 'etc/xdg/xfce4/helpers.rc').exists())
             self.assertIn('TerminalEmulator=starch-cosmic-terminal',
                           (fs / 'etc/skel/.config/xfce4/helpers.rc').read_text())
@@ -395,20 +350,13 @@ class InstallerSafety(unittest.TestCase):
                          'etc/systemd/sleep.conf.d', 'etc/skel/.config/kscreenlockerrc',
                          'etc/skel/.config/powerdevilrc'):
                 self.assertFalse((overlay / path).exists(), path)
-            lock_config = configparser.ConfigParser()
-            plasma = overlay.parent / 'desktop-overlays/plasma'
-            lock_config.read(plasma / 'etc/xdg/kscreenlockerrc')
-            self.assertNotIn('Daemon', lock_config)
+            for name in ('desktop-overlays', 'rotation-overlay', 'pacman.conf'):
+                self.assertFalse((overlay.parent / name).exists(), name)
+            self.assertFalse((overlay / 'etc/xdg/autostart/starch-trust-installer.desktop').exists())
             self.assertEqual((overlay / 'usr/share/starch/fastfetch-text').read_bytes(), (ROOT / 'fastfetch-text').read_bytes())
             self.assertEqual((overlay / 'etc/nftables.conf').read_text(),
                              (ROOT / 'archiso/profile/airootfs/etc/nftables.conf').read_text())
-            self.assertEqual((plasma / 'etc/skel/.config/kwinrc').read_text(),
-                             (ROOT / 'archiso/profile/airootfs/etc/skel/.config/kwinrc').read_text())
-            theme = overlay / 'usr/share/plymouth/themes/starch'
-            self.assertEqual((theme / 'logo.png').read_bytes(),
-                             (ROOT / 'calamares/branding/starch/starchlinux.png').read_bytes())
-            self.assertTrue((theme / 'starch.plymouth').is_file())
-            self.assertTrue((theme / 'starch.script').is_file())
+            self.assertTrue((overlay / 'usr/share/starch/splash-starch.bmp').is_file())
 
     def test_linux_update_utility_is_staged_for_live_and_installed_systems(self):
         spec = importlib.util.spec_from_file_location('stage_luu', ROOT / 'scripts/build/stage-installer.py')
@@ -449,23 +397,11 @@ class InstallerSafety(unittest.TestCase):
             packages = list((fs / 'usr/share/wallpapers').iterdir())
             self.assertEqual(len(packages), 1)
             package = packages[0]
-            metadata = json.loads((package / 'metadata.json').read_text())
-            self.assertEqual(metadata['KPlugin']['Name'], 'Starch Night')
-            self.assertEqual(metadata['KPackageStructure'], 'Plasma/Wallpaper')
             image = package / 'contents/images/3840x2160.png'
             self.assertEqual(image.read_bytes(), b'png fixture')
             installed = fs / 'usr/share/starch-installer/target-overlay/usr/share/wallpapers' / package.name
-            self.assertEqual((installed / 'metadata.json').read_text(), (package / 'metadata.json').read_text())
             self.assertEqual((installed / 'contents/images/3840x2160.png').read_bytes(), b'png fixture')
-            backgrounds = list((fs / 'usr/share/backgrounds/starch').iterdir())
-            self.assertEqual(len(backgrounds), 1)
-            background = backgrounds[0]
-            self.assertEqual(background.read_bytes(), b'png fixture')
-            installed_background = fs / 'usr/share/starch-installer/target-overlay' / background.relative_to(fs)
-            self.assertEqual(installed_background.read_bytes(), b'png fixture')
-            self.assertFalse(list((fs / 'usr/share/starch-installer/desktop-overlays').rglob('all')))
-
-    def test_evergreen_is_an_optional_cosmic_default(self):
+    def test_evergreen_uses_the_shared_xfce_and_greeter_path(self):
         spec = importlib.util.spec_from_file_location('stage_wallpapers', ROOT / 'scripts/build/stage-installer.py')
         stage = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(stage)
@@ -476,10 +412,7 @@ class InstallerSafety(unittest.TestCase):
             inputs.mkdir()
             (inputs / 'wyxina-tree-8559118.jpg').write_bytes(b'evergreen fixture')
             stage.stage_wallpapers(fs, inputs)
-            default = fs / 'usr/share/backgrounds/starch/evergreen.jpg'
+            default = fs / 'usr/share/wallpapers/Starch-Evergreen/contents/images/3840x2160.jpg'
             self.assertEqual(default.read_bytes(), b'evergreen fixture')
-            for desktop in ('cosmic', 'cosmic-lite'):
-                selection = (fs / 'usr/share/starch-installer/desktop-overlays' / desktop
-                             / 'etc/skel/.config/cosmic/com.system76.CosmicBackground/v1/all')
-                self.assertIn('Path("/usr/share/backgrounds/starch/evergreen.jpg")',
-                              selection.read_text())
+            installed = fs / 'usr/share/starch-installer/target-overlay' / default.relative_to(fs)
+            self.assertEqual(installed.read_bytes(), default.read_bytes())

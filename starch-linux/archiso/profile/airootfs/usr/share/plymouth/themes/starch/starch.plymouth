@@ -1,8 +1,0 @@
-[Plymouth Theme]
-Name=Starch
-Description=Small centered Starch Lite logo
-ModuleName=script
-
-[script]
-ImageDir=/usr/share/plymouth/themes/starch
-ScriptFile=/usr/share/plymouth/themes/starch/starch.script

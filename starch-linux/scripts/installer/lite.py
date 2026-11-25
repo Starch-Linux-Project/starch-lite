@@ -10,19 +10,8 @@ SERVICES = {
     'sysinit': ('starch-banner', 'udev', 'udev-trigger', 'cgroups'),
     'boot': ('sysctl', 'esysusers', 'etmpfiles-setup', 'elogind', 'agetty.tty2'),
     'default': ('dbus', 'NetworkManager', 'nftables', 'bluetoothd', 'starch-zram',
-                'syslog-ng', 'sddm'),
+                'syslog-ng', 'lightdm'),
 }
-
-
-def enabled_services(xfce=False, cosmic=False):
-    # Both desktops need a recovery console started before the display manager.
-    services = dict(SERVICES)
-    if cosmic:
-        services['default'] = tuple(s for s in services['default'] if s != 'sddm')
-    if xfce:
-        services['default'] = tuple('lightdm' if s == 'sddm' else s
-                                    for s in services['default'])
-    return services
 
 
 def efi_stub(root):
@@ -38,14 +27,7 @@ def efi_stub(root):
                        + ', '.join(candidates))
 
 
-def configure(root, xfce=False, cosmic=False):
-    if xfce and cosmic:
-        raise RuntimeError("Xfce and COSMIC are mutually exclusive.")
-    if not cosmic and not xfce:
-        shutil.copytree(root / "usr/share/starch-lite/legacy-desktop-config",
-                        root / "etc/xdg", dirs_exist_ok=True)
-        shutil.copytree(root / "usr/share/starch-lite/legacy-wayland-sessions",
-                        root / "usr/share/wayland-sessions", dirs_exist_ok=True)
+def configure(root):
     # Calamares has already written the hostname and keyboard/locale files.
     hostname = (root / 'etc/hostname').read_text().strip()
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.-]*', hostname):
@@ -56,35 +38,23 @@ def configure(root, xfce=False, cosmic=False):
         raise RuntimeError('Missing console keymap for OpenRC.')
     put(root, 'etc/conf.d/keymaps', f'keymap="{keymap[1]}"\n')
     put(root, 'etc/conf.d/hwclock', 'clock="UTC"\n')
-    if xfce:
-        # Keep the native Xfce launcher and Artix LightDM session wrapper.
-        shutil.copyfile(root / 'usr/share/xsessions/xfce.desktop',
-                        root / 'usr/share/starch-lite/xsessions/starch-xfce.desktop')
-        shutil.copytree(root / 'usr/share/starch-lite/xfce-config', root / 'etc/xdg',
-                        dirs_exist_ok=True)
-        put(root, 'etc/lightdm/lightdm.conf',
-            '[LightDM]\nsessions-directory=/usr/share/starch-lite/xsessions\n'
-            '\n[Seat:*]\ngreeter-session=lightdm-slick-greeter\n'
-            'user-session=starch-xfce\nsession-wrapper=/etc/lightdm/Xsession\n'
-            'autologin-user=\nallow-guest=false\n')
-        put(root, 'etc/lightdm/slick-greeter.conf',
-            '[Greeter]\nbackground=/usr/share/wallpapers/Starch-Evergreen/contents/images/3840x2160.jpg\n'
-            'draw-user-backgrounds=false\n')
-        for link in (root / 'etc/runlevels').glob('*/sddm'):
-            chroot(root, 'rc-update', 'del', 'sddm', link.parent.name)
-    elif not cosmic:
-        # Only offer the wrapper that establishes a private Plasma session bus.
-        put(root, 'usr/share/starch-lite/wayland-sessions/starch-lite.desktop',
-            (root / 'usr/share/wayland-sessions/starch-lite.desktop').read_text())
-        put(root, 'etc/sddm.conf.d/20-starch-lite.conf',
-            '[Wayland]\nSessionDir=/usr/share/starch-lite/wayland-sessions\n')
-        put(root, 'var/lib/sddm/state.conf', '[Last]\nSession=starch-lite.desktop\n', mode=0o600)
-        chroot(root, 'chown', 'sddm:sddm', '/var/lib/sddm/state.conf')
+    # Keep the native Xfce launcher and Artix LightDM session wrapper.
+    shutil.copyfile(root / 'usr/share/xsessions/xfce.desktop',
+                    root / 'usr/share/starch-lite/xsessions/starch-xfce.desktop')
+    shutil.copytree(root / 'usr/share/starch-lite/xfce-config', root / 'etc/xdg',
+                    dirs_exist_ok=True)
+    put(root, 'etc/lightdm/lightdm.conf',
+        '[LightDM]\nsessions-directory=/usr/share/starch-lite/xsessions\n'
+        '\n[Seat:*]\ngreeter-session=lightdm-slick-greeter\n'
+        'user-session=starch-xfce\nsession-wrapper=/etc/lightdm/Xsession\n'
+        'autologin-user=\nallow-guest=false\n')
+    put(root, 'etc/lightdm/slick-greeter.conf',
+        '[Greeter]\nbackground=/usr/share/wallpapers/Starch-Evergreen/contents/images/3840x2160.jpg\n'
+        'draw-user-backgrounds=false\n')
     # Use Artix's maintained firewall service with Starch's existing rules.
     put(root, 'etc/conf.d/nftables',
         'NFTABLES_SAVE="/etc/nftables.conf"\nSAVE_ON_STOP="no"\n')
-    manager = 'greetd' if cosmic else 'lightdm' if xfce else 'sddm'
-    put(root, f'etc/conf.d/{manager}', 'rc_need="elogind dbus"\n')
+    put(root, 'etc/conf.d/lightdm', 'rc_need="elogind dbus"\n')
     # Claim tty2 before the display manager starts; do not race a getty against it on tty1.
     console = 2
     for number in range(1, 7):
@@ -99,12 +69,12 @@ def configure(root, xfce=False, cosmic=False):
         conf = root / f'etc/conf.d/agetty.{tty}'
         if not conf.exists():
             shutil.copyfile(root / 'etc/conf.d/agetty', conf)
-    for runlevel, services in enabled_services(xfce, cosmic).items():
+    for runlevel, services in SERVICES.items():
         for service in services:
             chroot(root, 'rc-update', 'add', service, runlevel)
 
 
-def validate_openrc_files(root, xfce=False):
+def validate_openrc_files(root):
     # OpenRC owns these default runlevel links, but disabling the extra
     # consoles intentionally removes them. Check every other packaged path.
     # The retained console is moved to boot; validate() checks its new link.
@@ -121,33 +91,30 @@ def validate_openrc_files(root, xfce=False):
             raise RuntimeError(f'Missing OpenRC package file: {name}')
 
 
-def validate(root, xfce=False, cosmic=False):
-    if xfce and cosmic:
-        raise RuntimeError("Xfce and COSMIC are mutually exclusive.")
-    if xfce:
-        for path in ('/usr/bin/startxfce4', '/usr/bin/Xorg', '/usr/bin/Thunar',
-                     '/usr/bin/xfce4-screensaver', '/usr/bin/nm-applet',
-                     '/usr/bin/xfce4-session',
-                     '/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1'):
-            chroot(root, 'test', '-x', path)
-        config = configparser.ConfigParser()
-        config.read(root / 'etc/lightdm/lightdm.conf')
-        for section, key, expected in (
-                ('LightDM', 'sessions-directory', '/usr/share/starch-lite/xsessions'),
-                ('Seat:*', 'greeter-session', 'lightdm-slick-greeter'),
-                ('Seat:*', 'user-session', 'starch-xfce'),
-                ('Seat:*', 'session-wrapper', '/etc/lightdm/Xsession'),
-                ('Seat:*', 'autologin-user', ''),
-                ('Seat:*', 'allow-guest', 'false')):
-            if config.get(section, key, fallback=None) != expected:
-                raise RuntimeError(f'Incorrect Lite Xfce LightDM setting: {key}')
-        if list((root / 'etc/runlevels').glob('*/sddm')):
-            raise RuntimeError('SDDM must not be enabled for Lite Xfce.')
-        chroot(root, 'pacman', '-Qk', 'lightdm', 'lightdm-openrc', 'lightdm-slick-greeter')
-        chroot(root, 'test', '-f', '/usr/share/xgreeters/lightdm-slick-greeter.desktop')
-        desktop = (root / 'usr/share/starch-lite/xsessions/starch-xfce.desktop').read_text()
-        if not re.search(r'^Exec=startxfce4\s*$', desktop, re.M):
-            raise RuntimeError('Xfce must use its native session launcher.')
+def validate(root):
+    for path in ('/usr/bin/startxfce4', '/usr/bin/Xorg', '/usr/bin/Thunar',
+                 '/usr/bin/xfce4-screensaver', '/usr/bin/nm-applet',
+                 '/usr/bin/xfce4-session',
+                 '/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1'):
+        chroot(root, 'test', '-x', path)
+    config = configparser.ConfigParser()
+    config.read(root / 'etc/lightdm/lightdm.conf')
+    for section, key, expected in (
+            ('LightDM', 'sessions-directory', '/usr/share/starch-lite/xsessions'),
+            ('Seat:*', 'greeter-session', 'lightdm-slick-greeter'),
+            ('Seat:*', 'user-session', 'starch-xfce'),
+            ('Seat:*', 'session-wrapper', '/etc/lightdm/Xsession'),
+            ('Seat:*', 'autologin-user', ''),
+            ('Seat:*', 'allow-guest', 'false')):
+        if config.get(section, key, fallback=None) != expected:
+            raise RuntimeError(f'Incorrect Lite Xfce LightDM setting: {key}')
+    if list((root / 'etc/runlevels').glob('*/sddm')):
+        raise RuntimeError('SDDM must not be enabled for Lite Xfce.')
+    chroot(root, 'pacman', '-Qk', 'lightdm', 'lightdm-openrc', 'lightdm-slick-greeter')
+    chroot(root, 'test', '-f', '/usr/share/xgreeters/lightdm-slick-greeter.desktop')
+    desktop = (root / 'usr/share/starch-lite/xsessions/starch-xfce.desktop').read_text()
+    if not re.search(r'^Exec=startxfce4\s*$', desktop, re.M):
+        raise RuntimeError('Xfce must use its native session launcher.')
     for number in range(1, 7):
         if number == 2:
             continue
@@ -161,26 +128,17 @@ def validate(root, xfce=False, cosmic=False):
                  'etc/sysctl.d/99-low-ram.conf'):
         if not (root / name).is_file():
             raise RuntimeError(f'Missing Lite component: {name}')
-    for runlevel, services in enabled_services(xfce, cosmic).items():
+    for runlevel, services in SERVICES.items():
         for service in services:
             link = root / 'etc/runlevels' / runlevel / service
             if not link.is_symlink():
                 raise RuntimeError(f'OpenRC service is not enabled: {service}')
             chroot(root, 'test', '-x', f'/etc/runlevels/{runlevel}/{service}')
-    if xfce:
-        validate_user_services(root)
-    if not xfce and not cosmic:
-        for name in ("usr/lib/starch-lite/plasma-session", "usr/lib/starch-lite/plasma-session-inner"):
-            if not (root / name).is_file():
-                raise RuntimeError(f"Missing Lite Plasma component: {name}")
-        config = configparser.ConfigParser()
-        config.read(root / 'etc/xdg/startkderc')
-        if config.getboolean('General', 'systemdBoot', fallback=True):
-            raise RuntimeError('Lite Plasma must use its non-systemd session startup.')
+    validate_user_services(root)
     hooks = (root / 'etc/mkinitcpio.conf.d/10-starch.conf').read_text()
     if re.search(r'\b(systemd|sd-vconsole)\b', hooks) or 'udev' not in hooks:
         raise RuntimeError('Lite initramfs must use udev hooks without systemd.')
-    validate_openrc_files(root, xfce=xfce)
+    validate_openrc_files(root)
     chroot(root, 'pacman', '-Qk', 'starch-lite', 'elogind', 'artix-archlinux-support', 'linux-zen')
 
 

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ -f /etc/starch-live && $(id -un) == liveuser ]] || exit 0
+
+source_launcher=/usr/share/applications/starch-install.desktop
+launcher="$HOME/Desktop/starch-install.desktop"
+[[ -f $launcher && ! -L $launcher && -x $launcher ]] || exit 0
+cmp -s -- "$source_launcher" "$launcher" || exit 0
+
+# GVfs stores the checksum on the live user's session bus.
+checksum=$(sha256sum -- "$source_launcher")
+gio set -t string "$launcher" metadata::xfce-exe-checksum "${checksum%% *}"
+# Refresh Xfdesktop's file info if it has already loaded the shortcut.
+touch -m -- "$launcher"

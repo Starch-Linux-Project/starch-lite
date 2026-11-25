@@ -135,9 +135,6 @@ class UpstreamAudio(unittest.TestCase):
             self.assertEqual(seed.read_text(), 'administrator setting')
 
     def test_bootstrap_seeds_before_users_without_starting_services(self):
-        class Selection:
-            def value(self, name):
-                return {'starchLite': True, 'starchDesktop': 'xfce'}.get(name)
         with tempfile.TemporaryDirectory() as directory, patch.object(lite, 'chroot') as calls:
             root = Path(directory) / 'target'
             data = Path(directory) / 'data'
@@ -146,7 +143,7 @@ class UpstreamAudio(unittest.TestCase):
             binary.parent.mkdir(parents=True)
             binary.touch()
             with patch.object(bootstrap, 'DATA', data):
-                bootstrap.apply_defaults(root, Selection())
+                bootstrap.apply_defaults(root)
             lite.validate_user_runlevels(root, root / 'etc/skel')
             calls.assert_not_called()
 
@@ -166,9 +163,10 @@ class UpstreamAudio(unittest.TestCase):
                 self.assertNotEqual(p.name, 'starch-audio.desktop')
 
     def test_archive_rejects_old_version_and_removed_payload_even_with_new_identity(self):
-        for version, stale in [('0.2.2-17', None), ('0.2.2-18', 'usr/lib/starch-lite/audio-session'),
-                               ('0.2.2-18', 'usr/share/starch-lite/xfce-config/autostart/starch-audio.desktop'),
-                               ('0.2.2-18', None)]:
+        for version, stale in [('0.2.2-18', None), ('0.2.2-19', 'usr/lib/starch-lite/audio-session'),
+                               ('0.2.2-19', 'usr/share/starch-lite/xfce-config/autostart/starch-audio.desktop'),
+                               ('0.2.2-19', 'usr/lib/starch-lite/plasma-session'),
+                               ('0.2.2-19', None)]:
             with self.subTest(version=version, stale=stale), tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / 'starch-lite.pkg.tar'
                 with tarfile.open(path, 'w') as archive:
@@ -178,7 +176,7 @@ class UpstreamAudio(unittest.TestCase):
                     archive.addfile(info, io.BytesIO(data))
                     if stale:
                         archive.addfile(tarfile.TarInfo(stale))
-                if version != '0.2.2-18' or stale:
+                if version != '0.2.2-19' or stale:
                     with self.assertRaises(RuntimeError):
                         profiles.verify_lite_archive(path)
                 else:

@@ -19,7 +19,6 @@ sys.path.insert(0, str(ROOT / 'scripts/installer'))
 import bootstrap
 import configure
 import graphics
-import limine
 import lite
 import preflight
 import profiles
@@ -48,7 +47,7 @@ def bundle(root):
         filename = f'{name}-1.0-1-x86_64.pkg.tar.zst'
         stream = io.BytesIO()
         with tarfile.open(fileobj=stream, mode='w') as archive:
-            data = f'pkgname = {name}\npkgver = 0.2.2-18\n'.encode()
+            data = f'pkgname = {name}\npkgver = 0.2.2-19\n'.encode()
             member = tarfile.TarInfo('.PKGINFO')
             member.size = len(data)
             archive.addfile(member, io.BytesIO(data))
@@ -99,52 +98,14 @@ class LiteProfile(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'Missing OpenRC package file: /usr/bin/openrc'):
                     lite.validate_openrc_files(root)
 
-    def test_xfce_extension_requires_lite_and_changes_selection_identity(self):
-        self.assertFalse(profiles.has_xfce(Storage(starchLite=False, starchLiteXfce=True)))
-        self.assertEqual(profiles.profile_name(Storage(starchLite=True)), 'lite')
-        self.assertEqual(profiles.profile_name(Storage(starchLite=True, starchLiteXfce=True)), 'lite-xfce')
-        base = ['linux-lts', 'plasma-desktop']
-        self.assertNotIn('xfce4-session', profiles.lite_packages(base))
-        selected = profiles.lite_packages(base, xfce=True)
-        self.assertNotIn('plasma-desktop', selected)
-        self.assertTrue(profiles.PLASMA_PACKAGES.isdisjoint(selected))
-        for package in ('linux-zen', 'xfce4-session', 'xorg-server',
-                        'network-manager-applet', 'xfce4-screensaver'):
-            self.assertIn(package, selected)
-
-    def test_plasma_profile_keeps_starch_pinned_apps(self):
-        base = preflight.read_manifest(ROOT / 'manifests/minimal-packages.txt')
-        selected = profiles.lite_packages(base)
-        for package in ('firefox', 'nautilus', 'cosmic-terminal'):
-            self.assertIn(package, selected)
-        layout = (ROOT / 'archiso/profile/airootfs/usr/share/plasma/look-and-feel/'
-                  'org.starch.desktop/contents/layouts/org.kde.plasma.desktop-layout.js').read_text()
-        self.assertIn(
-            'applications:firefox.desktop,applications:org.gnome.Nautilus.desktop,'
-            'applications:com.system76.CosmicTerm.desktop,'
-            'applications:linux-update-utility.desktop', layout)
-        self.assertNotIn('org.kde.konsole.desktop', layout)
-
-    def test_xfce_replaces_all_plasma_packages_in_real_manifest(self):
-        base = preflight.read_manifest(ROOT / 'manifests/minimal-packages.txt')
-        plasma = profiles.lite_packages(base)
-        xfce = profiles.lite_packages(base, xfce=True)
-        self.assertTrue(profiles.PLASMA_PACKAGES.isdisjoint(xfce))
-        self.assertTrue((profiles.PLASMA_PACKAGES - {'qt6-sensors'}).issubset(plasma))
-        for package in ('pipewire', 'wireplumber', 'networkmanager', 'nftables',
-                        'lightdm', 'lightdm-openrc', 'lightdm-slick-greeter', 'firefox', 'linux-zen'):
-            self.assertIn(package, xfce)
-        for package in ('cosmic-terminal', 'thunar', 'polkit-gnome', 'xdg-desktop-portal-gtk',
-                        'xdg-user-dirs'):
-            self.assertIn(package, xfce)
-        self.assertNotIn('sddm', xfce)
-        self.assertNotIn('sddm-openrc', xfce)
-        self.assertIn('sddm', plasma)
-        self.assertIn('sddm-openrc', plasma)
-        self.assertNotIn('lightdm', plasma)
-        self.assertNotIn('konsole', xfce)
-        self.assertNotIn('xfce4-terminal', xfce)
-        self.assertNotIn('nautilus', xfce)
+    def test_target_manifest_contains_lite_desktop_and_shared_apps(self):
+        packages = set(preflight.read_manifest(ROOT / 'manifests/minimal-packages.txt'))
+        self.assertTrue({'linux-zen', 'openrc', 'lightdm', 'lightdm-openrc',
+                         'lightdm-slick-greeter', 'xfce4-session', 'thunar',
+                         'cosmic-terminal', 'cosmic-text-editor', 'firefox',
+                         'egummiboot', 'dbus-openrc', 'wireplumber-openrc'} <= packages)
+        self.assertFalse({'linux-lts', 'sddm', 'plasma-desktop', 'cosmic-session',
+                          'dbus-broker-units', 'zram-generator'} & packages)
 
     def test_xfce_configuration_enables_only_xfce(self):
         import shutil
@@ -162,15 +123,14 @@ class LiteProfile(unittest.TestCase):
                 '[Autologin]\nUser=\nSession=\nRelogin=false\n'
                 '[Wayland]\nSessionDir=/usr/share/wayland-sessions\n')
             with patch.object(lite, 'chroot') as calls:
-                lite.configure(root, xfce=True)
+                lite.configure(root)
             self.assertEqual((root / 'usr/share/starch-lite/xsessions/starch-xfce.desktop').read_text(),
                              native.read_text())
             self.assertTrue((root / 'etc/conf.d/agetty.tty2').is_file())
             calls.assert_any_call(root, 'rc-update', 'add', 'agetty.tty2', 'boot')
-            self.assertNotIn('agetty.tty1', lite.enabled_services(True)['default'])
+            self.assertNotIn('agetty.tty1', lite.SERVICES['default'])
             calls.assert_any_call(root, 'rc-update', 'add', 'lightdm', 'default')
-            self.assertNotIn('sddm', lite.enabled_services(True)['default'])
-            self.assertIn('sddm', lite.enabled_services(False)['default'])
+            self.assertNotIn('sddm', lite.SERVICES['default'])
             self.assertEqual((root / 'etc/conf.d/lightdm').read_text(),
                              'rc_need="elogind dbus"\n')
             self.assertFalse((root / 'var/lib/sddm/state.conf').exists())
@@ -236,24 +196,6 @@ class LiteProfile(unittest.TestCase):
         self.assertIn('value="launcher"', panel)
         self.assertIn('value="/usr/share/applications/linux-update-utility.desktop"', panel)
 
-    def test_plasma_wrapper_reports_invalid_runtime(self):
-        wrapper = ROOT / 'packages/starch-lite/integration/root/usr/lib/starch-lite/plasma-session'
-        with tempfile.TemporaryDirectory() as directory:
-            runtime = Path(directory) / 'runtime'
-            env = os.environ | {'XDG_RUNTIME_DIR': str(runtime)}
-            result = subprocess.run([wrapper], env=env, capture_output=True, text=True)
-            self.assertEqual(result.returncode, 1)
-            self.assertIn('does not exist', result.stderr)
-            runtime.mkdir(mode=0o755)
-            runtime.chmod(0o755)
-            result = subprocess.run([wrapper], env=env, capture_output=True, text=True)
-            self.assertEqual(result.returncode, 1)
-            self.assertIn('permissions must be 0700', result.stderr)
-            env.pop('XDG_RUNTIME_DIR')
-            result = subprocess.run([wrapper], env=env, capture_output=True, text=True)
-            self.assertEqual(result.returncode, 1)
-            self.assertIn('did not set XDG_RUNTIME_DIR', result.stderr)
-
     def test_normal_iso_build_always_builds_and_stages_lite(self):
         build = (ROOT / 'build.sh').read_text()
         stage_script = (ROOT / 'scripts/build/stage-installer.py').read_text()
@@ -262,53 +204,33 @@ class LiteProfile(unittest.TestCase):
         self.assertIn("SOURCE / 'build/starch-lite/artix-repo'", stage_script)
         self.assertNotIn('STARCH_EXPERIMENTAL_LITE', stage_script)
 
-    def test_dedicated_installer_forces_lite_before_preflight(self):
-        gs = Storage(starchLite=False, starchDesktop='cosmic')
-        with patch.object(preflight, 'run', side_effect=profiles.validate_selection) as run:
-            preflight.run_lite(gs)
-        run.assert_called_once_with(gs)
-        profiles.validate_selection(gs)
-        self.assertEqual(profiles.profile_name(gs), 'lite-xfce')
-        self.assertTrue(gs.value('starchLiteXfce'))
-        self.assertNotIn('starchadvanced', (ROOT / 'calamares/settings.conf').read_text())
-
-    def test_repository_and_signing_selection_is_lite_only(self):
-        original_is_file = Path.is_file
-        for enabled in (False, True):
-            with self.subTest(lite=enabled), tempfile.TemporaryDirectory() as directory:
-                state = Path(directory)
-                bundle(state / 'lite')
-                for name in ('pacman.conf', 'pacman-lite.conf'):
-                    (state / name).write_text((ROOT / 'calamares' / name).read_text())
-                gs = Storage(starchLite=enabled, starchDesktop="xfce" if enabled else "plasma",
-                             firmwareType='efi', partitionChoices={'install': 'erase', 'swap': 'none'})
-                def is_file(path):
-                    # Lite must work even before the live keyring exists.
-                    if path == Path('/etc/pacman.d/gnupg/pubring.gpg'):
-                        return not enabled
-                    return original_is_file(path)
-                with patch.object(preflight, 'DATA', state), patch.object(preflight, 'STATE', state), \
-                     patch.object(preflight, 'selected_disk', return_value='/dev/vda'), \
-                     patch.object(preflight, 'output', return_value='{}'), \
-                     patch.object(preflight, 'deactivate_disk'), patch.object(preflight, 'check_disk_tree'), \
-                     patch.object(preflight, 'read_manifest', return_value=['base', 'linux-lts']), \
-                     patch.object(preflight, 'microcode', return_value=[]), \
-                     patch.object(preflight, 'select_packages', return_value=[]), \
-                     patch.object(Path, 'is_file', autospec=True, side_effect=is_file), \
-                     patch.object(preflight, 'prepare_lite_keyring', return_value=state / 'lite-gnupg') as trust, \
-                     patch.object(preflight, 'command') as commands:
-                    preflight.run(gs)
-                sync = next(c.args[0] for c in commands.call_args_list if '-Sy' in c.args[0])
-                config = Path(sync[sync.index('--config') + 1])
-                self.assertEqual(config.name, 'pacman-lite.conf' if enabled else 'pacman.conf')
-                self.assertEqual('--gpgdir' in sync, enabled)
-                self.assertEqual(trust.call_count, int(enabled))
-                repos = [line[1:-1] for line in config.read_text().splitlines()
-                         if line.startswith('[') and line != '[options]']
-                self.assertEqual(repos, ['system', 'world', 'galaxy', 'extra'] if enabled else ['core', 'extra'])
-                selection = json.loads((state / 'selection.json').read_text())
-                self.assertEqual('artix-keyring' in selection['packages'], enabled)
-                self.assertIn('linux-zen' if enabled else 'linux-lts', selection['packages'])
+    def test_preflight_initializes_lite_identity_and_isolated_repository_trust(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            bundle(state / 'lite')
+            config = state / 'pacman-lite.conf'
+            config.write_text((ROOT / 'calamares' / config.name).read_text())
+            gs = Storage(starchProfile='obsolete', firmwareType='efi',
+                         partitionChoices={'install': 'erase', 'swap': 'none'})
+            packages = preflight.read_manifest(ROOT / 'manifests/minimal-packages.txt')
+            with patch.object(preflight, 'DATA', state), patch.object(preflight, 'STATE', state), \
+                 patch.object(preflight, 'selected_disk', return_value='/dev/vda'), \
+                 patch.object(preflight, 'output', return_value='{}'), \
+                 patch.object(preflight, 'deactivate_disk'), patch.object(preflight, 'check_disk_tree'), \
+                 patch.object(preflight, 'read_manifest', return_value=packages), \
+                 patch.object(preflight, 'microcode', return_value=[]), \
+                 patch.object(preflight, 'select_packages', return_value=['vulkan-intel']), \
+                 patch.object(preflight, 'prepare_lite_keyring', return_value=state / 'lite-gnupg') as trust, \
+                 patch.object(preflight, 'command') as commands:
+                preflight.run(gs)
+            sync = next(c.args[0] for c in commands.call_args_list if '-Sy' in c.args[0])
+            self.assertEqual(sync[sync.index('--config') + 1], config)
+            self.assertEqual(sync[sync.index('--gpgdir') + 1], state / 'lite-gnupg')
+            trust.assert_called_once()
+            selection = json.loads((state / 'selection.json').read_text())
+            self.assertEqual(gs.value('starchProfile'), selection['profile'])
+            self.assertEqual((selection['profile'], selection['desktop']), ('lite-xfce', 'xfce'))
+            self.assertEqual(selection['packages'], packages + ['vulkan-intel'])
 
     def test_lite_trust_never_populates_the_live_keyring(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(repositories, 'command') as commands:
@@ -323,22 +245,8 @@ class LiteProfile(unittest.TestCase):
                     self.assertEqual(argv[argv.index('--gpgdir') + 1], keyring)
             self.assertEqual(keyring, state / 'lite-gnupg')
 
-    def test_default_and_package_selection(self):
-        self.assertEqual(profiles.profile_name(Storage()), 'standard')
-        self.assertEqual(profiles.kernel_name(Storage()), 'linux-lts')
-        original = ['base', 'linux-lts', 'dbus-broker-units', 'zram-generator', 'limine']
-        packages = profiles.lite_packages(original)
-        self.assertIn('linux-zen', packages)
-        self.assertIn('dbus-openrc', packages)
-        self.assertIn('artix-archlinux-support', packages)
-        self.assertNotIn('starch-lite-openrc', packages)
-        self.assertNotIn('linux-lts', packages)
-        self.assertNotIn('dbus-broker-units', packages)
-        self.assertNotIn('zram-generator', packages)
-        self.assertEqual(original[1], 'linux-lts')
-
     def test_zen_nvidia_uses_dkms_and_matching_headers(self):
-        selected = graphics.package_selection([(0x10de, 0x1e90, 0, 0)], {(0x1e90,)}, kernel='linux-zen')
+        selected = graphics.package_selection([(0x10de, 0x1e90, 0, 0)], {(0x1e90,)})
         self.assertIn('nvidia-open-dkms', selected)
         self.assertIn('linux-zen-headers', selected)
         self.assertNotIn('nvidia-open-lts', selected)
@@ -367,14 +275,19 @@ class LiteProfile(unittest.TestCase):
                 else:
                     self.assertEqual(len(profiles.verified_bundle(root)), 2)
 
-    def test_missing_bundle_stops_before_disk_access_without_advanced_gate(self):
-        for acknowledged in (False, True):
-            with tempfile.TemporaryDirectory() as directory, patch.object(preflight, 'DATA', Path(directory)), \
-                 patch.object(preflight, 'selected_disk') as selected_disk, patch.object(preflight, 'command') as command:
-                with self.assertRaises(RuntimeError):
-                    preflight.run(Storage(starchLite=True, starchDesktop="xfce", starchAdvancedAcknowledged=acknowledged))
-                selected_disk.assert_not_called()
-                command.assert_not_called()
+    def test_missing_bundle_stops_before_disk_access(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(preflight, 'DATA', Path(directory)), \
+             patch.object(preflight, 'selected_disk') as selected_disk, patch.object(preflight, 'command') as command:
+            with self.assertRaisesRegex(RuntimeError, 'bundle is missing'):
+                preflight.run(Storage())
+            selected_disk.assert_not_called()
+            command.assert_not_called()
+
+    def test_bootstrap_rejects_changed_profile_before_target_access(self):
+        with patch.object(bootstrap, 'target') as target:
+            with self.assertRaisesRegex(RuntimeError, 'profile changed'):
+                bootstrap.run(Storage(starchProfile='obsolete'))
+            target.assert_not_called()
 
     def test_bundle_change_after_preflight_stops_before_pacstrap(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -385,8 +298,8 @@ class LiteProfile(unittest.TestCase):
             with patch.object(bootstrap, 'target', return_value=root), \
                  patch.object(bootstrap, 'DATA', root), patch.object(bootstrap, 'STATE', root), \
                  patch.object(bootstrap, 'command') as command:
-                with self.assertRaisesRegex(RuntimeError, 'changed after preflight'):
-                    bootstrap.run(Storage(starchLite=True, starchDesktop="xfce"))
+                with self.assertRaisesRegex(RuntimeError, 'bundle changed after preflight'):
+                    bootstrap.run(Storage(starchProfile='lite-xfce'))
                 command.assert_not_called()
 
     def test_configure_lite_selects_openrc_without_systemctl(self):
@@ -404,13 +317,12 @@ class LiteProfile(unittest.TestCase):
                 runlevel.mkdir(parents=True)
                 for number in range(1, 7):
                     (runlevel / f'agetty.tty{number}').symlink_to(f'/etc/init.d/agetty.tty{number}')
-                session = root / 'usr/share/starch-lite/legacy-wayland-sessions/starch-lite.desktop'
-                session.parent.mkdir(parents=True)
-                session.write_text('[Desktop Entry]\nExec=/usr/lib/starch-lite/plasma-session\n')
                 import shutil
-                shutil.copytree(ROOT / 'packages/starch-lite/integration/root/usr/share/starch-lite/legacy-desktop-config',
-                                root / 'usr/share/starch-lite/legacy-desktop-config')
-                gs = Storage(starchLite=True, firmwareType=firmware)
+                shutil.copytree(ROOT / 'packages/starch-lite/integration/root', root, dirs_exist_ok=True)
+                native = root / 'usr/share/xsessions/xfce.desktop'
+                native.parent.mkdir(parents=True)
+                native.write_text('[Desktop Entry]\nExec=startxfce4\n')
+                gs = Storage(firmwareType=firmware)
                 stub = root / 'usr/lib/systemd/boot/efi/linuxx64.efi.stub'
                 stub.parent.mkdir(parents=True)
                 stub.touch()
@@ -420,12 +332,11 @@ class LiteProfile(unittest.TestCase):
                 commands = [call.args[1] for call in calls.call_args_list + lite_calls.call_args_list]
                 self.assertNotIn('systemctl', commands)
                 self.assertIn('rc-update', commands)
-                self.assertEqual((root / 'var/lib/sddm/state.conf').read_text(),
-                                 '[Last]\nSession=starch-lite.desktop\n')
+                lite_calls.assert_any_call(root, 'rc-update', 'add', 'lightdm', 'default')
                 for number in range(1, 7):
                     lite_calls.assert_any_call(root, 'rc-update', 'del', f'agetty.tty{number}', 'default')
                 lite_calls.assert_any_call(root, 'rc-update', 'add', 'agetty.tty2', 'boot')
-                self.assertNotIn('agetty.tty1', lite.enabled_services()['default'])
+                self.assertNotIn('agetty.tty1', lite.SERVICES['default'])
                 self.assertEqual((root / 'etc/init.d/agetty.tty2').readlink(), Path('agetty'))
                 self.assertEqual((root / 'etc/conf.d/agetty.tty2').read_text(), 'term_type=linux\n')
                 self.assertIn('mkinitcpio', commands)
@@ -441,7 +352,6 @@ class LiteProfile(unittest.TestCase):
                                   (root / 'etc/mkinitcpio.d/linux-zen.preset').read_text())
                     self.assertIn('Stub=/usr/lib/systemd/boot/efi/linuxx64.efi.stub',
                                   (root / 'etc/kernel/starch-lite-uki.conf').read_text())
-                    self.assertIn('egummiboot', profiles.lite_packages(['linux-lts']))
                     stub.unlink()
                     with patch.object(configure, 'target', return_value=root), \
                          patch.object(configure, 'chroot'), patch.object(lite, 'chroot'):
@@ -466,14 +376,6 @@ class LiteProfile(unittest.TestCase):
                 stub.mkdir()
                 with self.assertRaises(RuntimeError):
                     lite.efi_stub(root)
-
-    def test_limine_efi_selects_profile_kernel(self):
-        self.assertIn('starch-linux-lts.efi', limine.configuration('abc'))
-        lite_config = limine.configuration('abc', 'linux-zen')
-        self.assertIn('/Starch Lite\n', lite_config)
-        self.assertNotIn('/Starch Lite LTS', lite_config)
-        self.assertIn('starch-linux-zen.efi', lite_config)
-        self.assertNotIn('linux-lts', lite_config)
 
     def test_staging_requires_explicit_bundle_and_never_installs_lite_into_live_root(self):
         with tempfile.TemporaryDirectory() as directory:

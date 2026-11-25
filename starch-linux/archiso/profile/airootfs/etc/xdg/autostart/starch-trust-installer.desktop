@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Trust Starch Lite installer shortcut
+Exec=/usr/local/lib/starch/trust-installer-launcher
+OnlyShowIn=XFCE;
+NoDisplay=true

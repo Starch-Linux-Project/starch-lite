@@ -9,11 +9,7 @@ source still had that behavior before this change; no VM or ISO identity was
 available to establish which image was used.
 
 `starch-lite 0.2.2-16` removes the supervisor, both packaged audio-autostart
-templates, and the PAM rewrite helper/hook. The dormant Plasma inner launcher
-no longer calls the removed program. Other package preferences/services remain.
-The supported Xfce installer no longer copies legacy Plasma session inputs.
-Dormant COSMIC/OpenRC code remains outside the supported Lite path and is not
-an alternative supported installation profile.
+templates, and the PAM rewrite helper/hook.
 
 The installer requests Artix's audio user-service packages and seeds:
 
@@ -212,9 +208,7 @@ this source change; fresh-VM acceptance remains outstanding.
 
 ## Implementation file inventory and verification record
 
-Paths below are relative to the source repository. Existing COSMIC implementation
-changes were preserved; the only additional change to its test file is removal
-of an expectation that the retired Lite audio template remain packaged.
+Paths below are relative to the source repository.
 
 | Changed source | Responsibility |
 | --- | --- |
@@ -222,15 +216,13 @@ of an expectation that the retired Lite audio template remain packaged.
 | `packages/starch-lite/integration/root/usr/lib/starch-lite/audio-session` | Deleted custom supervisor. |
 | `packages/starch-lite/integration/root/usr/lib/starch-lite/configure-pam` | Deleted PAM rewrite helper. |
 | `packages/starch-lite/integration/root/usr/share/libalpm/hooks/95-starch-lite-pam.hook` | Deleted update-time PAM rewrite. |
-| `packages/starch-lite/integration/root/usr/share/starch-lite/legacy-desktop-config/autostart/starch-audio.desktop` | Deleted legacy audio autostart template. |
 | `packages/starch-lite/integration/root/usr/share/starch-lite/xfce-config/autostart/starch-audio.desktop` | Deleted supported audio autostart template. |
-| `packages/starch-lite/integration/root/usr/lib/starch-lite/plasma-session-inner` | Removes dangling supervisor invocation from dormant Lite compatibility launcher. |
-| `scripts/installer/profiles.py` | Lite-only service selection; format-3 bundle and actual archive identity/payload validation. |
+| `scripts/installer/profiles.py` | Format-3 bundle and actual archive identity/payload validation. |
 | `scripts/installer/bootstrap.py` | Seeds upstream user runlevels before account creation. |
-| `scripts/installer/lite.py` | Seeds/validates user services and active PAM; rejects old/competing launchers; stops copying legacy inputs into Xfce; removes PAM mutation. |
+| `scripts/installer/lite.py` | Seeds/validates user services and active PAM; rejects old/competing launchers; removes PAM mutation. |
 | `scripts/installer/validate.py` | Checks the created user's runlevels, ownership and startup configuration. |
 | `scripts/build/starch-lite.sh` | Fingerprints archive validator, validates builds and reuse, emits bundle format 3. |
-| `scripts/build/stage-installer.py` | Replaces the generated Lite bundle directory on repeated staging, including disabling Lite. |
+| `scripts/build/stage-installer.py` | Replaces the generated Lite bundle directory on repeated staging. |
 | `tests/unit/test_lite_audio.py` | New upstream PAM/service, ownership, competing startup, archive and preserved-payload regression tests. |
 | `tests/unit/test_starch_lite.py` | Removes obsolete supervisor implementation tests; uses archive fixtures; checks absence and repeated staging. |
 | `tests/unit/test_cosmic.py` | Adjusts only the legacy-Lite preference snapshot for the removed audio template. |

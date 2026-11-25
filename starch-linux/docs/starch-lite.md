@@ -27,7 +27,7 @@ Upstream Artix PAM (`pambase`, LightDM and OpenRC) supplies `pam_elogind` and
 services across logins. Starch does not rewrite PAM or maintain an audio
 supervisor. Audio service updates arrive through normal Artix package updates.
 
-New images require `starch-lite 0.2.2-18` and bundle format 3. Old ISO images
+New images require `starch-lite 0.2.2-19` and bundle format 3. Old ISO images
 and installed systems do not change when source is rebuilt. See
 [existing-installation migration, rollback and VM checks](starch-lite-audio-migration.md).
 The implementation is verified offline; fresh-VM login, recovery and logout

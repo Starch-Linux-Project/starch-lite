@@ -6,9 +6,7 @@ login, and elogind for session management.
 Thunar handles files, Ristretto handles images, and Xfce supplies screenshot and
 task-manager applications. Compositing and session restoration are disabled by
 default. The bundled Lite integration supplies low-memory settings, zram
-configuration, and Xfce defaults. Starch's automatic screen-rotation integration
-is not included in Lite.
-
+configuration, and Xfce defaults.
 Repository priority is Artix `system`, `world`, and `galaxy`, followed by Arch
 `extra`; Arch `core` is disabled. System services use OpenRC. Audio runs through
 Artix's OpenRC user services for PipeWire and WirePlumber. A recovery text login
@@ -34,10 +32,9 @@ when the focused window overlaps it. Existing user panel settings are preserved.
 - Flatpak with Flathub configured; no Flatpak applications are selected by default.
 - [Linux Update Utility](linux-update-utility.md), supplied as a bundled AppImage.
 
-The [base package manifest](../manifests/minimal-packages.txt) is the starting
-point, not the complete package list for installation. The installer transforms the baseline into the Xfce/OpenRC
-package set, resolves dependencies, and
-selects graphics packages for the detected hardware and target kernel.
+The [target package manifest](../manifests/minimal-packages.txt) lists the
+Xfce/OpenRC package requests. The installer adds packages for the detected
+CPU and graphics hardware and resolves dependencies.
 
 ## Installation model and supported scope
 
