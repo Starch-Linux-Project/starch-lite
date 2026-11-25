@@ -8,7 +8,7 @@ import lite
 def run(gs):
     root = target(gs)
     kernel = KERNEL
-    put(root, 'etc/os-release', 'NAME="Starch Lite"\nPRETTY_NAME="Starch Lite 1.3"\nID=starch\nID_LIKE=arch\nVERSION="1.3"\nVERSION_ID="1.3"\nVERSION_CODENAME=evergreen\nBUILD_ID=rolling\nANSI_COLOR="38;2;23;147;209"\n')
+    put(root, 'etc/os-release', 'NAME="Starch Lite"\nPRETTY_NAME="Starch Lite 1.2"\nID=starch\nID_LIKE=arch\nVERSION="1.2"\nVERSION_ID="1.2"\nVERSION_CODENAME=evergreen\nBUILD_ID=rolling\nANSI_COLOR="38;2;23;147;209"\n')
     put(root, 'etc/issue', 'Starch Lite \\r (\\l)\n\n')
     put(root, 'etc/issue.net', 'Starch Lite\n')
     put(root, 'etc/mkinitcpio.conf.d/10-starch.conf',
